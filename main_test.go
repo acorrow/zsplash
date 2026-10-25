@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"testing"
@@ -365,4 +367,125 @@ func TestSecurityHardening(t *testing.T) {
 	if len(buf.String()) > 2000 {
 		t.Fatalf("expected width to be clamped, got output length %d", len(buf.String()))
 	}
+
+	// 7. Unknown theme names (--theme or ZSPLASH_THEME) fall back to "modern" and never emit escapes in help
+	t.Setenv("ZSPLASH_WIDTH", "80")
+	buf.Reset()
+	run([]string{"--theme", "\x1b]0;x\x07", "help"}, &buf)
+	if strings.Contains(buf.String(), "\x1b]0;") || !strings.Contains(stripANSI(buf.String()), "Active theme: modern") {
+		t.Fatalf("expected unknown --theme with escape sequence to fall back to 'modern', got: %q", buf.String())
+	}
+
+	// 8. "--" end-of-flags is honored across commands and as top-level box command
+	buf.Reset()
+	run([]string{"ok", "--", "--meta", "x"}, &buf)
+	okPlain := stripANSI(buf.String())
+	if !strings.Contains(okPlain, "--meta x") || strings.Contains(okPlain, "····") {
+		t.Fatalf("expected 'zsp ok -- --meta x' to print '--meta x' as message with no meta, got: %q", okPlain)
+	}
+	buf.Reset()
+	run([]string{"ok", "--", "--raw", "hi\x1b]52;c;pwn\x07"}, &buf)
+	if strings.Contains(buf.String(), "\x1b]52;") {
+		t.Fatalf("expected 'zsp ok -- --raw <escape>' to still strip escape, got: %q", buf.String())
+	}
+	buf.Reset()
+	run([]string{"tree", "--", "--title", "a"}, &buf)
+	treePlain := stripANSI(buf.String())
+	if !strings.Contains(treePlain, "├─ ● --title") || !strings.Contains(treePlain, "╰─ ● a") {
+		t.Fatalf("expected 'zsp tree -- --title a' to treat '--title' as an item, got: %q", treePlain)
+	}
+	buf.Reset()
+	run([]string{"--", "--title", "literal box"}, &buf)
+	if !strings.Contains(stripANSI(buf.String()), "--title literal box") {
+		t.Fatalf("expected 'zsp -- --title literal box' to render box text, got: %q", stripANSI(buf.String()))
+	}
+}
+
+func TestSpinPipedInputAndConfigSymlinks(t *testing.T) {
+	// 1. Piped input automatically reaches spin child command
+	binName := "zsplash"
+	if runtime.GOOS == "windows" {
+		binName = "zsplash.exe"
+	}
+	binPath := filepath.Join(t.TempDir(), binName)
+	buildCmd := exec.Command("go", "build", "-o", binPath, ".")
+	if out, err := buildCmd.CombinedOutput(); err != nil {
+		t.Fatalf("failed to build zsplash binary: %v\n%s", err, string(out))
+	}
+
+	catCmd := []string{"cat"}
+	if _, err := exec.LookPath("cat"); err != nil {
+		catCmd = []string{"findstr", ".*"}
+	}
+	spinArgs := append([]string{"spin", "Reading stdin", "--"}, catCmd...)
+	cmd := exec.Command(binPath, spinArgs...)
+	cmd.Stdin = strings.NewReader("piped-line-value\n")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("expected spin with piped stdin to succeed, got err: %v", err)
+	}
+	if strings.TrimSpace(string(out)) != "piped-line-value" {
+		t.Fatalf("expected piped input 'piped-line-value' on stdout, got: %q", string(out))
+	}
+
+	// 2. Symlink to a valid config can be read and updated while keeping the symlink intact;
+	// symlink to a non-config file is refused by both config set and config reset.
+	t.Run("config symlinks", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		realCfg := filepath.Join(tmpDir, "real-config.json")
+		if err := os.WriteFile(realCfg, []byte(`{"theme":"dracula"}`), 0600); err != nil {
+			t.Fatal(err)
+		}
+		linkCfg := filepath.Join(tmpDir, "link-config.json")
+		if err := os.Symlink(realCfg, linkCfg); err != nil {
+			if runtime.GOOS == "windows" {
+				t.Skipf("skipping symlink test on Windows without symlink privilege: %v", err)
+			}
+			t.Fatal(err)
+		}
+
+		t.Setenv("ZSPLASH_CONFIG", linkCfg)
+		var buf bytes.Buffer
+		run([]string{"config", "list"}, &buf)
+		if !strings.Contains(stripANSI(buf.String()), "dracula") {
+			t.Fatalf("expected symlinked config theme 'dracula' to be read, got: %q", stripANSI(buf.String()))
+		}
+
+		buf.Reset()
+		if code := runWithExit([]string{"config", "set", "theme", "nes"}, &buf, &buf); code != 0 {
+			t.Fatalf("expected config set through symlink to succeed, got code %d: %s", code, buf.String())
+		}
+		linkInfo, err := os.Lstat(linkCfg)
+		if err != nil || linkInfo.Mode()&os.ModeSymlink == 0 {
+			t.Fatalf("expected %q to remain a symlink after update, got mode=%v err=%v", linkCfg, linkInfo.Mode(), err)
+		}
+		updatedBytes, err := os.ReadFile(realCfg)
+		if err != nil || !strings.Contains(string(updatedBytes), `"nes"`) {
+			t.Fatalf("expected target config %q to be updated to 'nes', got: %q (err=%v)", realCfg, string(updatedBytes), err)
+		}
+
+		// Symlink to a non-config file (fake .zshrc) is refused
+		fakeZshrc := filepath.Join(tmpDir, ".zshrc")
+		origZshrc := "export EDITOR=vim\n"
+		if err := os.WriteFile(fakeZshrc, []byte(origZshrc), 0600); err != nil {
+			t.Fatal(err)
+		}
+		badLink := filepath.Join(tmpDir, "bad-link.json")
+		if err := os.Symlink(fakeZshrc, badLink); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("ZSPLASH_CONFIG", badLink)
+		buf.Reset()
+		if code := runWithExit([]string{"config", "set", "theme", "nes"}, &buf, &buf); code == 0 {
+			t.Fatalf("expected config set through symlink to non-config file to fail")
+		}
+		buf.Reset()
+		if code := runWithExit([]string{"config", "reset"}, &buf, &buf); code == 0 {
+			t.Fatalf("expected config reset through symlink to non-config file to fail")
+		}
+		afterZshrc, err := os.ReadFile(fakeZshrc)
+		if err != nil || string(afterZshrc) != origZshrc {
+			t.Fatalf("expected target non-config file %q to be unchanged, got %q (err=%v)", fakeZshrc, string(afterZshrc), err)
+		}
+	})
 }

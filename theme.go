@@ -64,7 +64,7 @@ func stripFormattingAndControls(s string, allowNewline bool) string {
 }
 
 // sanitizeText removes terminal escape sequences, control characters, and bidi format runes
-// from user input unless --raw (or ZSPLASH_RAW=1) is explicitly enabled.
+// from user input unless --raw is explicitly enabled.
 func sanitizeText(s string, allowNewline bool) string {
 	if rawOutputEnabled {
 		return s
@@ -409,14 +409,26 @@ func configFilePath() string {
 	return ""
 }
 
+func resolvedConfigPath() string {
+	p := configFilePath()
+	if p == "" {
+		return ""
+	}
+	p = filepath.Clean(p)
+	if resolved, err := filepath.EvalSymlinks(p); err == nil {
+		return resolved
+	}
+	return p
+}
+
 // validateExistingConfigFile ensures that if path already exists on disk, it is a regular file
 // containing a single valid zsplash JSON object (preventing accidental overwrite or deletion of
-// arbitrary files, empty files, or symlinks via ZSPLASH_CONFIG).
+// arbitrary files or empty files via ZSPLASH_CONFIG).
 func validateExistingConfigFile(path string) error {
 	if path == "" {
 		return fmt.Errorf("could not resolve config path ($HOME and $ZSPLASH_CONFIG are unset)")
 	}
-	info, err := os.Lstat(path)
+	info, err := os.Stat(path)
 	if os.IsNotExist(err) {
 		return nil
 	}
@@ -449,9 +461,9 @@ func validateExistingConfigFile(path string) error {
 
 func loadUserConfig() UserConfig {
 	cfg := UserConfig{Colors: make(map[string]string)}
-	if rawPath := configFilePath(); rawPath != "" {
-		path := filepath.Clean(rawPath)
-		if info, err := os.Lstat(path); err == nil && info.Mode().IsRegular() && info.Size() <= 64*1024 {
+	if resolved := resolvedConfigPath(); resolved != "" {
+		path := filepath.Clean(resolved)
+		if info, err := os.Stat(path); err == nil && info.Mode().IsRegular() && info.Size() <= 64*1024 {
 			if data, err := os.ReadFile(path); err == nil { // #nosec G304
 				_ = json.Unmarshal(data, &cfg)
 			}
@@ -467,11 +479,11 @@ func loadUserConfig() UserConfig {
 }
 
 func saveUserConfig(cfg UserConfig) error {
-	rawPath := configFilePath()
-	if err := validateExistingConfigFile(rawPath); err != nil {
+	resolved := resolvedConfigPath()
+	if err := validateExistingConfigFile(resolved); err != nil {
 		return err
 	}
-	path := filepath.Clean(rawPath)
+	path := filepath.Clean(resolved)
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return err
@@ -513,11 +525,15 @@ func saveUserConfig(cfg UserConfig) error {
 }
 
 func currentThemeName() string {
-	if cliThemeOverride != "" {
-		return strings.ToLower(cliThemeOverride)
+	if name := strings.ToLower(strings.TrimSpace(cliThemeOverride)); name != "" {
+		if _, ok := builtinThemes[name]; ok {
+			return name
+		}
 	}
-	if activeConfig.Theme != "" {
-		return strings.ToLower(activeConfig.Theme)
+	if name := strings.ToLower(strings.TrimSpace(activeConfig.Theme)); name != "" {
+		if _, ok := builtinThemes[name]; ok {
+			return name
+		}
 	}
 	return "modern"
 }
@@ -602,12 +618,13 @@ func handleConfigCommand(out io.Writer, args []string) int {
 		return 0
 	case "reset":
 		rawPath := configFilePath()
-		if rawPath != "" {
-			if err := validateExistingConfigFile(rawPath); err != nil {
+		resolved := resolvedConfigPath()
+		if resolved != "" {
+			if err := validateExistingConfigFile(resolved); err != nil {
 				renderPillBadge(out, "FAIL", activePalette().Fail, err.Error(), "")
 				return 1
 			}
-			_ = os.Remove(filepath.Clean(rawPath))
+			_ = os.Remove(filepath.Clean(resolved))
 		}
 		activeConfig = UserConfig{Colors: make(map[string]string)}
 		renderPillBadge(out, "PASS", activePalette().Pass, "Configuration reset to defaults", rawPath)

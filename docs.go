@@ -127,7 +127,6 @@ func buildCLISpec() CLISpec {
 			{"ZSPLASH_THEME", "", "Override active color palette for the current shell session."},
 			{"ZSPLASH_CONFIG", "~/.config/zsplash/config.json", "Custom path for reading and writing persistent user configuration."},
 			{"ZSPLASH_WIDTH", "auto (/dev/tty -> $COLUMNS -> 80)", "Force a specific terminal column width (integer 20..500)."},
-			{"ZSPLASH_RAW", "0", "Set to `1` to bypass escape sanitization without passing `--raw`."},
 			{"NO_COLOR", "", "Disable all ANSI color escapes and use bracket badges (`[PASS]`, `[WARN]`, `[FAIL]`, `[INFO]`)."},
 		},
 		SemanticRoles: []string{"primary", "secondary", "pass", "warn", "fail", "info", "muted", "text"},
@@ -295,7 +294,7 @@ func buildCommandSpecs(grads []string) []CommandSpec {
 			Name: "spin", Category: "Async & Progress",
 			Summary:  "Animate a live spinner on `/dev/tty` while running a child command, keeping `stdout` untouched for `$(...)` capture.",
 			Synopsis: "zsp spin <title> [--style dots|pulse|meter|line] [--color <c>] [--persist] [--stdin] [--duration <ms>] [-- <command> [args...]]",
-			Stream:   "Animation writes to `/dev/tty` (fallback: `stderr`). Child `stdout` and `stderr` pass through untouched; child `stdin` defaults to `/dev/null` unless `--stdin` is set.",
+			Stream:   "Animation writes to `/dev/tty` (fallback: `stderr`). Child `stdout` and `stderr` pass through untouched; child `stdin` is passed through when piped or redirected; `/dev/null` when `stdin` is an interactive terminal unless `--stdin` is set.",
 			ExitCode: "Propagates exact exit code of `<command>` (`128 + signal` when terminated by a signal: `130` on `SIGINT`, `143` on `SIGTERM`).",
 			Positionals: []ArgSpec{
 				{Name: "title", Required: true, Description: "Spinner label."},

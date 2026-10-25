@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-var version = "0.6.1"
+var version = "0.6.2"
 
 func main() {
 	code := runWithExit(os.Args[1:], os.Stdout, os.Stderr)
@@ -22,11 +22,11 @@ func run(args []string, out io.Writer) {
 }
 
 // extractGlobalThemeFlag strips --theme <name> from args and sets cliThemeOverride.
-// --raw is only accepted before the subcommand (or via ZSPLASH_RAW=1) so untrusted positional
+// --raw is only accepted before the subcommand so untrusted positional
 // arguments after the subcommand cannot smuggle --raw to disable sanitization.
 func extractGlobalThemeFlag(args []string) []string {
 	cliThemeOverride = ""
-	rawOutputEnabled = strings.TrimSpace(os.Getenv("ZSPLASH_RAW")) == "1"
+	rawOutputEnabled = false
 	var filtered []string
 	for i := 0; i < len(args); i++ {
 		a := args[i]
@@ -194,6 +194,10 @@ func runWithExit(rawArgs []string, out io.Writer, errOut io.Writer) int {
 		renderDemo(out)
 		return 0
 
+	case "--":
+		renderBox(out, BoxOptions{Text: strings.Join(rest, " ")})
+		return 0
+
 	default:
 		renderBox(out, BoxOptions{
 			Text: strings.Join(args, " "),
@@ -207,6 +211,10 @@ func parseBannerFlags(args []string) BannerOptions {
 	var pos []string
 	for i := 0; i < len(args); i++ {
 		a := args[i]
+		if a == "--" {
+			pos = append(pos, args[i+1:]...)
+			break
+		}
 		switch {
 		case (a == "--font" || a == "-f") && i+1 < len(args):
 			opts.Font = args[i+1]
@@ -247,6 +255,10 @@ func parseBoxFlags(args []string) BoxOptions {
 	var pos []string
 	for i := 0; i < len(args); i++ {
 		a := args[i]
+		if a == "--" {
+			pos = append(pos, args[i+1:]...)
+			break
+		}
 		switch {
 		case (a == "--title" || a == "-t") && i+1 < len(args):
 			opts.Title = args[i+1]
@@ -298,6 +310,10 @@ func parseBadgeFlags(args []string) (string, string) {
 	var pos []string
 	for i := 0; i < len(args); i++ {
 		a := args[i]
+		if a == "--" {
+			pos = append(pos, args[i+1:]...)
+			break
+		}
 		switch {
 		case (a == "--meta" || a == "-m") && i+1 < len(args):
 			meta = args[i+1]
@@ -316,6 +332,10 @@ func parseStepFlags(args []string) (string, string, string, string, string) {
 	var pos []string
 	for i := 0; i < len(args); i++ {
 		a := args[i]
+		if a == "--" {
+			pos = append(pos, args[i+1:]...)
+			break
+		}
 		switch {
 		case (a == "--color" || a == "-c") && i+1 < len(args):
 			colorSpec = args[i+1]
@@ -345,6 +365,10 @@ func parseRuleFlags(args []string) (string, string, string, int) {
 	var pos []string
 	for i := 0; i < len(args); i++ {
 		a := args[i]
+		if a == "--" {
+			pos = append(pos, args[i+1:]...)
+			break
+		}
 		switch {
 		case (a == "--color" || a == "-c") && i+1 < len(args):
 			colorSpec = args[i+1]
@@ -367,6 +391,10 @@ func parseKVFlags(args []string) (string, string, string, []string) {
 	var pairs []string
 	for i := 0; i < len(args); i++ {
 		a := args[i]
+		if a == "--" {
+			pairs = append(pairs, args[i+1:]...)
+			break
+		}
 		switch {
 		case (a == "--title" || a == "-t") && i+1 < len(args):
 			title = args[i+1]
@@ -391,6 +419,10 @@ func parseTreeFlags(args []string) (string, string, []string) {
 	var items []string
 	for i := 0; i < len(args); i++ {
 		a := args[i]
+		if a == "--" {
+			items = append(items, args[i+1:]...)
+			break
+		}
 		switch {
 		case (a == "--title" || a == "-t") && i+1 < len(args):
 			title = args[i+1]
@@ -410,6 +442,10 @@ func parseStyleFlags(args []string) StyleOptions {
 	var pos []string
 	for i := 0; i < len(args); i++ {
 		a := args[i]
+		if a == "--" {
+			pos = append(pos, args[i+1:]...)
+			break
+		}
 		switch {
 		case a == "--fg" && i+1 < len(args):
 			opts.Fg = args[i+1]
@@ -447,6 +483,10 @@ func parseBarFlags(args []string) BarOptions {
 	var pos []string
 	for i := 0; i < len(args); i++ {
 		a := args[i]
+		if a == "--" {
+			pos = append(pos, args[i+1:]...)
+			break
+		}
 		switch {
 		case a == "--in-place" || a == "-r":
 			opts.InPlace = true
@@ -483,6 +523,10 @@ func parseProgressFlags(args []string) (int, string, string, string) {
 	var pos []string
 	for i := 0; i < len(args); i++ {
 		a := args[i]
+		if a == "--" {
+			pos = append(pos, args[i+1:]...)
+			break
+		}
 		switch {
 		case a == "--total" && i+1 < len(args):
 			total, _ = strconv.Atoi(args[i+1])

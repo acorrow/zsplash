@@ -671,6 +671,17 @@ func openTTYWriter(fallback io.Writer) (io.Writer, func()) {
 	return fallback, func() {}
 }
 
+func isTerminal(f *os.File) bool {
+	if f == nil {
+		return false
+	}
+	fi, err := f.Stat()
+	if err != nil {
+		return false
+	}
+	return fi.Mode()&os.ModeCharDevice != 0
+}
+
 func signalExitCode(sig os.Signal) int {
 	if s, ok := sig.(syscall.Signal); ok && int(s) > 0 {
 		return 128 + int(s)
@@ -722,14 +733,18 @@ func runSpinner(stdout, stderr io.Writer, opts SpinOptions) int {
 	start := time.Now()
 	doneCh := make(chan error, 1)
 	var cmd *exec.Cmd
+	var interactive bool
 
 	if len(opts.Command) > 0 {
 		cmd = exec.Command(opts.Command[0], opts.Command[1:]...) // #nosec G204
 		cmd.Stdout = stdout
 		cmd.Stderr = stderr
-		if opts.Stdin {
+		stdinTTY := isTerminal(os.Stdin)
+		if opts.Stdin || !stdinTTY {
 			cmd.Stdin = os.Stdin
 		}
+		interactive = cmd.Stdin == os.Stdin && stdinTTY
+		prepareChild(cmd, interactive)
 		if err := cmd.Start(); err != nil {
 			renderPillBadge(ttyOut, "FAIL", pal.Fail, title, err.Error())
 			return 1
@@ -774,30 +789,30 @@ func runSpinner(stdout, stderr io.Writer, opts SpinOptions) int {
 			}
 			sigCount++
 			lastSig = sig
+			sysSig := syscall.SIGINT
+			if s, ok := sig.(syscall.Signal); ok {
+				sysSig = s
+			}
 			if sigCount == 1 {
-				if sig == syscall.SIGTERM {
-					_ = cmd.Process.Signal(syscall.SIGTERM)
-					killTimer = time.After(5 * time.Second)
+				if !(sysSig == syscall.SIGINT && interactive) {
+					signalChild(cmd, sysSig)
 				}
-				// On first SIGINT, the terminal process group already delivered SIGINT to the child;
-				// wait for the child to finish its own cleanup unless a second Ctrl-C arrives.
+				killTimer = time.After(5 * time.Second)
 				continue
 			}
-			_ = cmd.Process.Kill()
+			signalChild(cmd, syscall.SIGKILL)
 			select {
 			case <-doneCh:
 			case <-time.After(100 * time.Millisecond):
 			}
 			restoreTerminal()
 			renderPillBadge(ttyOut, "INT", pal.Warn, title, "interrupted")
-			return signalExitCode(sig)
+			return signalExitCode(lastSig)
 		case <-killTimer:
-			if cmd != nil && cmd.Process != nil {
-				_ = cmd.Process.Kill()
-				select {
-				case <-doneCh:
-				case <-time.After(100 * time.Millisecond):
-				}
+			signalChild(cmd, syscall.SIGKILL)
+			select {
+			case <-doneCh:
+			case <-time.After(100 * time.Millisecond):
 			}
 			restoreTerminal()
 			renderPillBadge(ttyOut, "INT", pal.Warn, title, "terminated")

@@ -183,6 +183,54 @@ func TestBarAndSpin(t *testing.T) {
 	if canAnim, hasCtrl := resolveTTYState(false, false); canAnim || hasCtrl || !shouldIsolateProcessGroup(hasCtrl) {
 		t.Errorf("expected (/dev/tty=false, stderr=false) -> canAnimate=false, hasControllingTTY=false, isolate=true; got %v, %v", canAnim, hasCtrl)
 	}
+
+	// Verify value-taking flags never consume "--" as their argument:
+	echoCmd := []string{"sh", "-c", "echo ran"}
+	exit3Cmd := []string{"sh", "-c", "exit 3"}
+	if _, err := exec.LookPath("sh"); err != nil {
+		echoCmd = []string{"cmd", "/c", "echo ran"}
+		exit3Cmd = []string{"cmd", "/c", "exit /b 3"}
+	}
+
+	for _, flag := range []string{"-s", "-c", "-d", "-t"} {
+		spinOut.Reset()
+		spinErr.Reset()
+		args := append([]string{"spin", flag, "--"}, echoCmd...)
+		code = runWithExit(args, &spinOut, &spinErr)
+		if code != 0 {
+			t.Errorf("spin %s -- <echo>: expected exit code 0, got %d", flag, code)
+		}
+		if strings.TrimSpace(spinOut.String()) != "ran" {
+			t.Errorf("spin %s -- <echo>: expected 'ran' on stdout, got %q", flag, spinOut.String())
+		}
+	}
+
+	spinOut.Reset()
+	spinErr.Reset()
+	code = runWithExit(append([]string{"spin", "-T", "--"}, exit3Cmd...), &spinOut, &spinErr)
+	if code != 3 {
+		t.Errorf("spin -T -- <exit 3>: expected exit code 3, got %d", code)
+	}
+
+	var okBuf bytes.Buffer
+	run([]string{"ok", "-m", "--", "x"}, &okBuf)
+	okPlain := stripANSI(okBuf.String())
+	if !strings.Contains(okPlain, "x") || strings.Contains(okPlain, "-m") {
+		t.Errorf("ok -m -- x: expected message 'x' without '-m', got %q", okPlain)
+	}
+
+	spinOut.Reset()
+	spinErr.Reset()
+	code = runWithExit(append([]string{"spin", "--title=-s", "--"}, echoCmd...), &spinOut, &spinErr)
+	if code != 0 {
+		t.Errorf("spin --title=-s -- <echo>: expected exit code 0, got %d", code)
+	}
+	if strings.TrimSpace(spinOut.String()) != "ran" {
+		t.Errorf("spin --title=-s -- <echo>: expected 'ran' on stdout, got %q", spinOut.String())
+	}
+	if !strings.Contains(stripANSI(spinErr.String()), "▸ -s") {
+		t.Errorf("spin --title=-s -- <echo>: expected '-s' as title in stderr, got %q", stripANSI(spinErr.String()))
+	}
 }
 
 func TestDemo(t *testing.T) {

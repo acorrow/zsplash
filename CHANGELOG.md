@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.6.8 (2026-10-25)
+
+- `flags`, `spin` (bug fix): value-taking flags across all commands (including `-T`/`--theme` and `spin`'s `-s`, `-c`, `-d`, `-t`) never consume `--` as their value. Previously, passing a title such as `"-s"` before `--` (`zsp spin "$step" -- ./deploy.sh`) caused `-s` to consume `--` as its style argument, skipping the child command while exiting `0`.
+- `spin`: added `--title <t>` / `--title=<t>` (`-t`) so scripts can pass untrusted spinner titles safely (`zsp spin --title="$step" -- ./deploy.sh`).
+- `spin`: forward `SIGHUP` (exit `129`) and `SIGQUIT` (exit `131`) to the child (or child process group when no terminal is attached) with a 5s grace period before `SIGKILL`.
+- `spin`: on Linux, set `SysProcAttr.Pdeathsig = syscall.SIGKILL` with `runtime.LockOSThread()` held across `cmd.Start()` through `cmd.Wait()` so the child does not outlive `zsp` if `zsp` is `SIGKILL`ed (documented the macOS limitation where no `Pdeathsig` equivalent exists).
+
 ## v0.6.7 (2026-10-25)
 
 - `banner`: do not emit `\033[1m` (`ansiBold`) on `--font line` (or `--font thin`), and keep gradient `box` top borders and `rule` lines unbolded. Prevents VS Code's integrated terminal on macOS from falling back to bold font glyphs for corners (`╭`, `╮`, `╰`, `╯`) and tees (`├`, `┬`, `┴`) while rendering straight segments (`─`, `│`, `╶`, `╴`, `╷`, `╵`) as thin 1px strokes.

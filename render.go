@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -758,37 +759,12 @@ func runSpinner(stdout, stderr io.Writer, opts SpinOptions) int {
 	}
 
 	sigCh := make(chan os.Signal, 2)
-	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+	signal.Notify(sigCh, spinnerSignals()...)
 	defer signal.Stop(sigCh)
 
 	start := time.Now()
 	doneCh := make(chan error, 1)
 	var cmd *exec.Cmd
-
-	if len(opts.Command) > 0 {
-		cmd = exec.Command(opts.Command[0], opts.Command[1:]...) // #nosec G204
-		cmd.Stdout = stdout
-		cmd.Stderr = stderr
-		stdinTTY := isTerminal(os.Stdin)
-		if opts.Stdin || !stdinTTY {
-			cmd.Stdin = os.Stdin
-		}
-		prepareChild(cmd, hasControllingTTY)
-		if err := cmd.Start(); err != nil {
-			renderPillBadge(ttyOut, "FAIL", pal.Fail, title, err.Error())
-			return 1
-		}
-		go func() { doneCh <- cmd.Wait() }()
-	} else {
-		dur := opts.DurationMs
-		if dur <= 0 {
-			dur = 600
-		}
-		go func() {
-			time.Sleep(time.Duration(dur) * time.Millisecond)
-			doneCh <- nil
-		}()
-	}
 
 	staticMode := opts.Static || !canAnimate
 	if staticMode {
@@ -805,6 +781,42 @@ func runSpinner(stdout, stderr io.Writer, opts SpinOptions) int {
 		} else {
 			fmt.Fprint(ttyOut, "\r")
 		}
+	}
+
+	if len(opts.Command) > 0 {
+		cmd = exec.Command(opts.Command[0], opts.Command[1:]...) // #nosec G204
+		cmd.Stdout = stdout
+		cmd.Stderr = stderr
+		stdinTTY := isTerminal(os.Stdin)
+		if opts.Stdin || !stdinTTY {
+			cmd.Stdin = os.Stdin
+		}
+		prepareChild(cmd, hasControllingTTY)
+		startErrCh := make(chan error, 1)
+		go func() {
+			runtime.LockOSThread()
+			defer runtime.UnlockOSThread()
+			if err := cmd.Start(); err != nil {
+				startErrCh <- err
+				return
+			}
+			startErrCh <- nil
+			doneCh <- cmd.Wait()
+		}()
+		if err := <-startErrCh; err != nil {
+			restoreTerminal()
+			renderPillBadge(ttyOut, "FAIL", pal.Fail, title, err.Error())
+			return 1
+		}
+	} else {
+		dur := opts.DurationMs
+		if dur <= 0 {
+			dur = 600
+		}
+		go func() {
+			time.Sleep(time.Duration(dur) * time.Millisecond)
+			doneCh <- nil
+		}()
 	}
 
 	ticker := time.NewTicker(80 * time.Millisecond)

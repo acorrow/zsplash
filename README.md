@@ -51,9 +51,11 @@ find . -type f | zsp progress --total 100 --title "Indexing"
 - **Exit codes**: Display commands always exit `0`. `spin` passes on the child's exit code (`128 + signal` when killed by a signal). `progress` and `config` exit non-zero on error.
 - **`spin` in scripts**:
   - `stdout` stays clean for `$(...)` capture.
+  - Pass untrusted titles with `--title`: `zsp spin --title="$var" -- cmd`.
   - Use `--static` for commands that prompt (`sudo`, `ssh`, `git`, `gpg`).
   - Use `--stdin` only for interactive input (piped `stdin` is passed through automatically).
-  - Prefer `SIGTERM` over `kill -INT` when a terminal is attached.
+  - Prefer `SIGTERM` over `kill -INT` when a terminal is attached. `SIGHUP` and `SIGQUIT` are also forwarded with a 5s grace period before `SIGKILL` (exiting `129` and `131`).
+  - On Linux, `Pdeathsig` (`SIGKILL`) stops the child if `zsp` is killed outright (`SIGKILL`). macOS has no equivalent of `Pdeathsig`, so `SIGKILL` of `zsp` on macOS can leave the child running when no terminal is attached.
 - **Log-friendly output**: `NO_COLOR` and `TERM=dumb` disable color. When no terminal is attached (`CI`, `cron`, logs redirected to a file), `spin` and `progress` skip in-place redraws automatically.
 
 ## Themes & Config

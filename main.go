@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-var version = "0.6.7"
+var version = "0.6.8"
 
 func main() {
 	code := runWithExit(os.Args[1:], os.Stdout, os.Stderr)
@@ -19,6 +19,10 @@ func main() {
 
 func run(args []string, out io.Writer) {
 	_ = runWithExit(args, out, out)
+}
+
+func hasValueArg(args []string, i int) bool {
+	return i+1 < len(args) && args[i+1] != "--"
 }
 
 // extractGlobalThemeFlag strips --theme <name> from args and sets cliThemeOverride.
@@ -38,9 +42,11 @@ func extractGlobalThemeFlag(args []string) []string {
 			rawOutputEnabled = true
 			continue
 		}
-		if (a == "--theme" || a == "-T") && i+1 < len(args) {
-			cliThemeOverride = args[i+1]
-			i++
+		if a == "--theme" || a == "-T" {
+			if hasValueArg(args, i) {
+				cliThemeOverride = args[i+1]
+				i++
+			}
 			continue
 		}
 		if strings.HasPrefix(a, "--theme=") {
@@ -216,30 +222,50 @@ func parseBannerFlags(args []string) BannerOptions {
 			break
 		}
 		switch {
-		case (a == "--font" || a == "-f") && i+1 < len(args):
-			opts.Font = args[i+1]
-			i++
+		case a == "--font" || a == "-f":
+			if hasValueArg(args, i) {
+				opts.Font = args[i+1]
+				i++
+			}
 		case strings.HasPrefix(a, "--font="):
 			opts.Font = strings.TrimPrefix(a, "--font=")
-		case (a == "--gradient" || a == "-g") && i+1 < len(args):
-			opts.Gradient = args[i+1]
-			i++
+		case a == "--gradient" || a == "-g":
+			if hasValueArg(args, i) {
+				opts.Gradient = args[i+1]
+				i++
+			}
 		case strings.HasPrefix(a, "--gradient="):
 			opts.Gradient = strings.TrimPrefix(a, "--gradient=")
-		case a == "--from" && i+1 < len(args):
-			opts.FromHex = args[i+1]
-			i++
-		case a == "--to" && i+1 < len(args):
-			opts.ToHex = args[i+1]
-			i++
-		case (a == "--color" || a == "-c") && i+1 < len(args):
-			opts.Color = args[i+1]
-			i++
+		case a == "--from":
+			if hasValueArg(args, i) {
+				opts.FromHex = args[i+1]
+				i++
+			}
+		case strings.HasPrefix(a, "--from="):
+			opts.FromHex = strings.TrimPrefix(a, "--from=")
+		case a == "--to":
+			if hasValueArg(args, i) {
+				opts.ToHex = args[i+1]
+				i++
+			}
+		case strings.HasPrefix(a, "--to="):
+			opts.ToHex = strings.TrimPrefix(a, "--to=")
+		case a == "--color" || a == "-c":
+			if hasValueArg(args, i) {
+				opts.Color = args[i+1]
+				i++
+			}
 		case strings.HasPrefix(a, "--color="):
 			opts.Color = strings.TrimPrefix(a, "--color=")
-		case (a == "--sub" || a == "--subtitle") && i+1 < len(args):
-			opts.Subtitle = args[i+1]
-			i++
+		case a == "--sub" || a == "--subtitle":
+			if hasValueArg(args, i) {
+				opts.Subtitle = args[i+1]
+				i++
+			}
+		case strings.HasPrefix(a, "--sub="):
+			opts.Subtitle = strings.TrimPrefix(a, "--sub=")
+		case strings.HasPrefix(a, "--subtitle="):
+			opts.Subtitle = strings.TrimPrefix(a, "--subtitle=")
 		case a == "--frame":
 			opts.Frame = true
 		default:
@@ -260,40 +286,64 @@ func parseBoxFlags(args []string) BoxOptions {
 			break
 		}
 		switch {
-		case (a == "--title" || a == "-t") && i+1 < len(args):
-			opts.Title = args[i+1]
-			i++
+		case a == "--title" || a == "-t":
+			if hasValueArg(args, i) {
+				opts.Title = args[i+1]
+				i++
+			}
 		case strings.HasPrefix(a, "--title="):
 			opts.Title = strings.TrimPrefix(a, "--title=")
-		case a == "--footer" && i+1 < len(args):
-			opts.Footer = args[i+1]
-			i++
+		case strings.HasPrefix(a, "-t="):
+			opts.Title = strings.TrimPrefix(a, "-t=")
+		case a == "--footer":
+			if hasValueArg(args, i) {
+				opts.Footer = args[i+1]
+				i++
+			}
 		case strings.HasPrefix(a, "--footer="):
 			opts.Footer = strings.TrimPrefix(a, "--footer=")
-		case (a == "--border" || a == "-b") && i+1 < len(args):
-			opts.Border = args[i+1]
-			i++
+		case a == "--border" || a == "-b":
+			if hasValueArg(args, i) {
+				opts.Border = args[i+1]
+				i++
+			}
 		case strings.HasPrefix(a, "--border="):
 			opts.Border = strings.TrimPrefix(a, "--border=")
-		case (a == "--color" || a == "-c") && i+1 < len(args):
-			opts.Color = args[i+1]
-			i++
+		case a == "--color" || a == "-c":
+			if hasValueArg(args, i) {
+				opts.Color = args[i+1]
+				i++
+			}
 		case strings.HasPrefix(a, "--color="):
 			opts.Color = strings.TrimPrefix(a, "--color=")
-		case (a == "--gradient" || a == "-g") && i+1 < len(args):
-			opts.Gradient = args[i+1]
-			i++
+		case a == "--gradient" || a == "-g":
+			if hasValueArg(args, i) {
+				opts.Gradient = args[i+1]
+				i++
+			}
 		case strings.HasPrefix(a, "--gradient="):
 			opts.Gradient = strings.TrimPrefix(a, "--gradient=")
-		case a == "--from" && i+1 < len(args):
-			opts.FromHex = args[i+1]
-			i++
-		case a == "--to" && i+1 < len(args):
-			opts.ToHex = args[i+1]
-			i++
-		case (a == "--width" || a == "-w") && i+1 < len(args):
-			opts.Width, _ = strconv.Atoi(args[i+1])
-			i++
+		case a == "--from":
+			if hasValueArg(args, i) {
+				opts.FromHex = args[i+1]
+				i++
+			}
+		case strings.HasPrefix(a, "--from="):
+			opts.FromHex = strings.TrimPrefix(a, "--from=")
+		case a == "--to":
+			if hasValueArg(args, i) {
+				opts.ToHex = args[i+1]
+				i++
+			}
+		case strings.HasPrefix(a, "--to="):
+			opts.ToHex = strings.TrimPrefix(a, "--to=")
+		case a == "--width" || a == "-w":
+			if hasValueArg(args, i) {
+				opts.Width, _ = strconv.Atoi(args[i+1])
+				i++
+			}
+		case strings.HasPrefix(a, "--width="):
+			opts.Width, _ = strconv.Atoi(strings.TrimPrefix(a, "--width="))
 		default:
 			pos = append(pos, a)
 		}
@@ -315,11 +365,15 @@ func parseBadgeFlags(args []string) (string, string) {
 			break
 		}
 		switch {
-		case (a == "--meta" || a == "-m") && i+1 < len(args):
-			meta = args[i+1]
-			i++
+		case a == "--meta" || a == "-m":
+			if hasValueArg(args, i) {
+				meta = args[i+1]
+				i++
+			}
 		case strings.HasPrefix(a, "--meta="):
 			meta = strings.TrimPrefix(a, "--meta=")
+		case strings.HasPrefix(a, "-m="):
+			meta = strings.TrimPrefix(a, "-m=")
 		default:
 			pos = append(pos, a)
 		}
@@ -337,12 +391,20 @@ func parseStepFlags(args []string) (string, string, string, string, string) {
 			break
 		}
 		switch {
-		case (a == "--color" || a == "-c") && i+1 < len(args):
-			colorSpec = args[i+1]
-			i++
-		case (a == "--gradient" || a == "-g") && i+1 < len(args):
-			gradSpec = args[i+1]
-			i++
+		case a == "--color" || a == "-c":
+			if hasValueArg(args, i) {
+				colorSpec = args[i+1]
+				i++
+			}
+		case strings.HasPrefix(a, "--color="):
+			colorSpec = strings.TrimPrefix(a, "--color=")
+		case a == "--gradient" || a == "-g":
+			if hasValueArg(args, i) {
+				gradSpec = args[i+1]
+				i++
+			}
+		case strings.HasPrefix(a, "--gradient="):
+			gradSpec = strings.TrimPrefix(a, "--gradient=")
 		default:
 			pos = append(pos, a)
 		}
@@ -370,15 +432,27 @@ func parseRuleFlags(args []string) (string, string, string, int) {
 			break
 		}
 		switch {
-		case (a == "--color" || a == "-c") && i+1 < len(args):
-			colorSpec = args[i+1]
-			i++
-		case (a == "--gradient" || a == "-g") && i+1 < len(args):
-			gradSpec = args[i+1]
-			i++
-		case (a == "--width" || a == "-w") && i+1 < len(args):
-			width, _ = strconv.Atoi(args[i+1])
-			i++
+		case a == "--color" || a == "-c":
+			if hasValueArg(args, i) {
+				colorSpec = args[i+1]
+				i++
+			}
+		case strings.HasPrefix(a, "--color="):
+			colorSpec = strings.TrimPrefix(a, "--color=")
+		case a == "--gradient" || a == "-g":
+			if hasValueArg(args, i) {
+				gradSpec = args[i+1]
+				i++
+			}
+		case strings.HasPrefix(a, "--gradient="):
+			gradSpec = strings.TrimPrefix(a, "--gradient=")
+		case a == "--width" || a == "-w":
+			if hasValueArg(args, i) {
+				width, _ = strconv.Atoi(args[i+1])
+				i++
+			}
+		case strings.HasPrefix(a, "--width="):
+			width, _ = strconv.Atoi(strings.TrimPrefix(a, "--width="))
 		default:
 			pos = append(pos, a)
 		}
@@ -396,17 +470,29 @@ func parseKVFlags(args []string) (string, string, string, []string) {
 			break
 		}
 		switch {
-		case (a == "--title" || a == "-t") && i+1 < len(args):
-			title = args[i+1]
-			i++
+		case a == "--title" || a == "-t":
+			if hasValueArg(args, i) {
+				title = args[i+1]
+				i++
+			}
 		case strings.HasPrefix(a, "--title="):
 			title = strings.TrimPrefix(a, "--title=")
-		case (a == "--color" || a == "-c") && i+1 < len(args):
-			colorSpec = args[i+1]
-			i++
-		case (a == "--gradient" || a == "-g") && i+1 < len(args):
-			gradSpec = args[i+1]
-			i++
+		case strings.HasPrefix(a, "-t="):
+			title = strings.TrimPrefix(a, "-t=")
+		case a == "--color" || a == "-c":
+			if hasValueArg(args, i) {
+				colorSpec = args[i+1]
+				i++
+			}
+		case strings.HasPrefix(a, "--color="):
+			colorSpec = strings.TrimPrefix(a, "--color=")
+		case a == "--gradient" || a == "-g":
+			if hasValueArg(args, i) {
+				gradSpec = args[i+1]
+				i++
+			}
+		case strings.HasPrefix(a, "--gradient="):
+			gradSpec = strings.TrimPrefix(a, "--gradient=")
 		default:
 			pairs = append(pairs, a)
 		}
@@ -424,12 +510,22 @@ func parseTreeFlags(args []string) (string, string, []string) {
 			break
 		}
 		switch {
-		case (a == "--title" || a == "-t") && i+1 < len(args):
-			title = args[i+1]
-			i++
-		case (a == "--color" || a == "-c") && i+1 < len(args):
-			colorSpec = args[i+1]
-			i++
+		case a == "--title" || a == "-t":
+			if hasValueArg(args, i) {
+				title = args[i+1]
+				i++
+			}
+		case strings.HasPrefix(a, "--title="):
+			title = strings.TrimPrefix(a, "--title=")
+		case strings.HasPrefix(a, "-t="):
+			title = strings.TrimPrefix(a, "-t=")
+		case a == "--color" || a == "-c":
+			if hasValueArg(args, i) {
+				colorSpec = args[i+1]
+				i++
+			}
+		case strings.HasPrefix(a, "--color="):
+			colorSpec = strings.TrimPrefix(a, "--color=")
 		default:
 			items = append(items, a)
 		}
@@ -447,21 +543,41 @@ func parseStyleFlags(args []string) StyleOptions {
 			break
 		}
 		switch {
-		case a == "--fg" && i+1 < len(args):
-			opts.Fg = args[i+1]
-			i++
-		case a == "--bg" && i+1 < len(args):
-			opts.Bg = args[i+1]
-			i++
-		case (a == "--gradient" || a == "-g") && i+1 < len(args):
-			opts.Gradient = args[i+1]
-			i++
-		case a == "--from" && i+1 < len(args):
-			opts.FromHex = args[i+1]
-			i++
-		case a == "--to" && i+1 < len(args):
-			opts.ToHex = args[i+1]
-			i++
+		case a == "--fg":
+			if hasValueArg(args, i) {
+				opts.Fg = args[i+1]
+				i++
+			}
+		case strings.HasPrefix(a, "--fg="):
+			opts.Fg = strings.TrimPrefix(a, "--fg=")
+		case a == "--bg":
+			if hasValueArg(args, i) {
+				opts.Bg = args[i+1]
+				i++
+			}
+		case strings.HasPrefix(a, "--bg="):
+			opts.Bg = strings.TrimPrefix(a, "--bg=")
+		case a == "--gradient" || a == "-g":
+			if hasValueArg(args, i) {
+				opts.Gradient = args[i+1]
+				i++
+			}
+		case strings.HasPrefix(a, "--gradient="):
+			opts.Gradient = strings.TrimPrefix(a, "--gradient=")
+		case a == "--from":
+			if hasValueArg(args, i) {
+				opts.FromHex = args[i+1]
+				i++
+			}
+		case strings.HasPrefix(a, "--from="):
+			opts.FromHex = strings.TrimPrefix(a, "--from=")
+		case a == "--to":
+			if hasValueArg(args, i) {
+				opts.ToHex = args[i+1]
+				i++
+			}
+		case strings.HasPrefix(a, "--to="):
+			opts.ToHex = strings.TrimPrefix(a, "--to=")
 		case a == "--bold" || a == "-b":
 			opts.Bold = true
 		case a == "--dim":
@@ -490,15 +606,27 @@ func parseBarFlags(args []string) BarOptions {
 		switch {
 		case a == "--in-place" || a == "-r":
 			opts.InPlace = true
-		case (a == "--width" || a == "-w") && i+1 < len(args):
-			opts.Width, _ = strconv.Atoi(args[i+1])
-			i++
-		case (a == "--color" || a == "-c") && i+1 < len(args):
-			opts.Color = args[i+1]
-			i++
-		case (a == "--gradient" || a == "-g") && i+1 < len(args):
-			opts.Gradient = args[i+1]
-			i++
+		case a == "--width" || a == "-w":
+			if hasValueArg(args, i) {
+				opts.Width, _ = strconv.Atoi(args[i+1])
+				i++
+			}
+		case strings.HasPrefix(a, "--width="):
+			opts.Width, _ = strconv.Atoi(strings.TrimPrefix(a, "--width="))
+		case a == "--color" || a == "-c":
+			if hasValueArg(args, i) {
+				opts.Color = args[i+1]
+				i++
+			}
+		case strings.HasPrefix(a, "--color="):
+			opts.Color = strings.TrimPrefix(a, "--color=")
+		case a == "--gradient" || a == "-g":
+			if hasValueArg(args, i) {
+				opts.Gradient = args[i+1]
+				i++
+			}
+		case strings.HasPrefix(a, "--gradient="):
+			opts.Gradient = strings.TrimPrefix(a, "--gradient=")
 		default:
 			pos = append(pos, a)
 		}
@@ -528,18 +656,36 @@ func parseProgressFlags(args []string) (int, string, string, string) {
 			break
 		}
 		switch {
-		case a == "--total" && i+1 < len(args):
-			total, _ = strconv.Atoi(args[i+1])
-			i++
-		case (a == "--title" || a == "-t") && i+1 < len(args):
-			title = args[i+1]
-			i++
-		case (a == "--color" || a == "-c") && i+1 < len(args):
-			colorSpec = args[i+1]
-			i++
-		case (a == "--gradient" || a == "-g") && i+1 < len(args):
-			gradSpec = args[i+1]
-			i++
+		case a == "--total":
+			if hasValueArg(args, i) {
+				total, _ = strconv.Atoi(args[i+1])
+				i++
+			}
+		case strings.HasPrefix(a, "--total="):
+			total, _ = strconv.Atoi(strings.TrimPrefix(a, "--total="))
+		case a == "--title" || a == "-t":
+			if hasValueArg(args, i) {
+				title = args[i+1]
+				i++
+			}
+		case strings.HasPrefix(a, "--title="):
+			title = strings.TrimPrefix(a, "--title=")
+		case strings.HasPrefix(a, "-t="):
+			title = strings.TrimPrefix(a, "-t=")
+		case a == "--color" || a == "-c":
+			if hasValueArg(args, i) {
+				colorSpec = args[i+1]
+				i++
+			}
+		case strings.HasPrefix(a, "--color="):
+			colorSpec = strings.TrimPrefix(a, "--color=")
+		case a == "--gradient" || a == "-g":
+			if hasValueArg(args, i) {
+				gradSpec = args[i+1]
+				i++
+			}
+		case strings.HasPrefix(a, "--gradient="):
+			gradSpec = strings.TrimPrefix(a, "--gradient=")
 		default:
 			pos = append(pos, a)
 		}
@@ -560,26 +706,55 @@ func parseSpinFlags(args []string) SpinOptions {
 			break
 		}
 		switch {
-		case (a == "--style" || a == "-s") && i+1 < len(args):
-			opts.Style = args[i+1]
-			i++
-		case (a == "--color" || a == "-c") && i+1 < len(args):
-			opts.Color = args[i+1]
-			i++
+		case a == "--title" || a == "-t":
+			if hasValueArg(args, i) {
+				opts.Title = args[i+1]
+				i++
+			}
+		case strings.HasPrefix(a, "--title="):
+			opts.Title = strings.TrimPrefix(a, "--title=")
+		case strings.HasPrefix(a, "-t="):
+			opts.Title = strings.TrimPrefix(a, "-t=")
+		case a == "--style" || a == "-s":
+			if hasValueArg(args, i) {
+				opts.Style = args[i+1]
+				i++
+			}
+		case strings.HasPrefix(a, "--style="):
+			opts.Style = strings.TrimPrefix(a, "--style=")
+		case strings.HasPrefix(a, "-s="):
+			opts.Style = strings.TrimPrefix(a, "-s=")
+		case a == "--color" || a == "-c":
+			if hasValueArg(args, i) {
+				opts.Color = args[i+1]
+				i++
+			}
+		case strings.HasPrefix(a, "--color="):
+			opts.Color = strings.TrimPrefix(a, "--color=")
+		case strings.HasPrefix(a, "-c="):
+			opts.Color = strings.TrimPrefix(a, "-c=")
 		case a == "--persist" || a == "-p":
 			opts.Persist = true
 		case a == "--static":
 			opts.Static = true
 		case a == "--stdin":
 			opts.Stdin = true
-		case (a == "--duration" || a == "-d") && i+1 < len(args):
-			opts.DurationMs, _ = strconv.Atoi(args[i+1])
-			i++
+		case a == "--duration" || a == "-d":
+			if hasValueArg(args, i) {
+				opts.DurationMs, _ = strconv.Atoi(args[i+1])
+				i++
+			}
+		case strings.HasPrefix(a, "--duration="):
+			opts.DurationMs, _ = strconv.Atoi(strings.TrimPrefix(a, "--duration="))
+		case strings.HasPrefix(a, "-d="):
+			opts.DurationMs, _ = strconv.Atoi(strings.TrimPrefix(a, "-d="))
 		default:
 			pos = append(pos, a)
 		}
 	}
-	opts.Title = strings.Join(pos, " ")
+	if opts.Title == "" && len(pos) > 0 {
+		opts.Title = strings.Join(pos, " ")
+	}
 	return opts
 }
 
@@ -703,7 +878,7 @@ func printHelp(out io.Writer) {
 	fmt.Fprintln(out, "  zsp code [--title <t>] <line1> <line2> ...")
 	fmt.Fprintln(out, "  zsp tree [--title <t>] <item1> <item2> ...")
 	fmt.Fprintln(out, "  zsp style <text> [--fg <c>] [--bg <c>] [--bold] [--italic] [--underline]")
-	fmt.Fprintln(out, "  zsp spin <title> [--style dots|pulse|meter|line] [--persist] [--static] -- <cmd> [args...]")
+	fmt.Fprintln(out, "  zsp spin [title] [--title <t>] [--style dots|pulse|meter|line] [--persist] [--static] -- <cmd> [args...]")
 	fmt.Fprintln(out, "  zsp bar <curr> <total> [label] [--in-place|-r] [--color <c>]")
 	fmt.Fprintln(out, "  zsp progress [--total <n>] [--title <t>] (reads lines from stdin)")
 	fmt.Fprintf(out, "  zsp themes         List all %d built-in color palettes (nes, snes, dracula, nord, etc.)\n", len(themeOrder))

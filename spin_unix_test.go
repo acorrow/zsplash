@@ -266,4 +266,89 @@ func TestSpinUnixProcessGroupSignals(t *testing.T) {
 			t.Fatalf("expected process group %d to be gone (ESRCH), got err=%v", pgid, err)
 		}
 	})
+
+	t.Run("SIGHUP stops process group and exits 129", func(t *testing.T) {
+		cmd := exec.Command(binPath, "spin", "Testing SIGHUP", "--", "sh", "-c", "echo $$; sleep 30 & sleep 30")
+		cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := cmd.Start(); err != nil {
+			t.Fatal(err)
+		}
+
+		reader := bufio.NewReader(stdout)
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			t.Fatalf("failed to read child pgid: %v", err)
+		}
+		pgid, err := strconv.Atoi(strings.TrimSpace(line))
+		if err != nil || pgid <= 0 {
+			t.Fatalf("invalid child pgid %q: %v", line, err)
+		}
+		time.Sleep(150 * time.Millisecond)
+
+		if err := cmd.Process.Signal(syscall.SIGHUP); err != nil {
+			t.Fatalf("failed to send SIGHUP: %v", err)
+		}
+
+		done := make(chan error, 1)
+		go func() { done <- cmd.Wait() }()
+
+		select {
+		case waitErr := <-done:
+			exitErr, ok := waitErr.(*exec.ExitError)
+			if !ok {
+				t.Fatalf("expected ExitError, got: %v", waitErr)
+			}
+			if exitErr.ExitCode() != 129 {
+				t.Fatalf("expected exit code 129 on SIGHUP, got %d", exitErr.ExitCode())
+			}
+		case <-time.After(12 * time.Second):
+			_ = cmd.Process.Kill()
+			t.Fatal("timed out waiting for zsp spin to exit after SIGHUP")
+		}
+
+		if err := waitForProcessGroupGone(pgid); err != syscall.ESRCH {
+			_ = syscall.Kill(-pgid, syscall.SIGKILL)
+			t.Fatalf("expected process group %d to be gone (ESRCH), got err=%v", pgid, err)
+		}
+	})
+
+	t.Run("SIGKILL on Linux stops child via Pdeathsig", func(t *testing.T) {
+		if runtime.GOOS != "linux" {
+			t.Skip("Pdeathsig is only supported on Linux")
+		}
+		cmd := exec.Command(binPath, "spin", "Testing SIGKILL", "--", "sh", "-c", "echo $$; exec sleep 30")
+		cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := cmd.Start(); err != nil {
+			t.Fatal(err)
+		}
+
+		reader := bufio.NewReader(stdout)
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			t.Fatalf("failed to read child pgid: %v", err)
+		}
+		pgid, err := strconv.Atoi(strings.TrimSpace(line))
+		if err != nil || pgid <= 0 {
+			t.Fatalf("invalid child pgid %q: %v", line, err)
+		}
+		time.Sleep(150 * time.Millisecond)
+
+		if err := cmd.Process.Signal(syscall.SIGKILL); err != nil {
+			t.Fatalf("failed to send SIGKILL: %v", err)
+		}
+		_ = cmd.Wait()
+
+		if err := waitForProcessGroupGone(pgid); err != syscall.ESRCH {
+			_ = syscall.Kill(-pgid, syscall.SIGKILL)
+			t.Fatalf("expected child process group %d to be stopped via Pdeathsig after SIGKILL, got err=%v", pgid, err)
+		}
+	})
 }

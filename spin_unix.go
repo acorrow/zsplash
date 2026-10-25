@@ -1,11 +1,16 @@
-//go:build !windows
+//go:build !windows && !linux
 
 package main
 
 import (
+	"os"
 	"os/exec"
 	"syscall"
 )
+
+func spinnerSignals() []os.Signal {
+	return []os.Signal{os.Interrupt, syscall.SIGTERM, syscall.SIGHUP, syscall.SIGQUIT}
+}
 
 func prepareChild(cmd *exec.Cmd, hasTTY bool) {
 	if shouldIsolateProcessGroup(hasTTY) {

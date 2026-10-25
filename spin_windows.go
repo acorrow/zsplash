@@ -3,9 +3,14 @@
 package main
 
 import (
+	"os"
 	"os/exec"
 	"syscall"
 )
+
+func spinnerSignals() []os.Signal {
+	return []os.Signal{os.Interrupt, syscall.SIGTERM}
+}
 
 func prepareChild(cmd *exec.Cmd, hasTTY bool) {}
 

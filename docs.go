@@ -293,14 +293,15 @@ func buildCommandSpecs(grads []string) []CommandSpec {
 		{
 			Name: "spin", Category: "Async & Progress",
 			Summary:  "Animate a live spinner on `/dev/tty` while running a child command, keeping `stdout` untouched for `$(...)` capture.",
-			Synopsis: "zsp spin <title> [--style dots|pulse|meter|line] [--color <c>] [--persist] [--static] [--stdin] [--duration <ms>] [-- <command> [args...]]",
+			Synopsis: "zsp spin [title] [--title <t>] [--style dots|pulse|meter|line] [--color <c>] [--persist] [--static] [--stdin] [--duration <ms>] [-- <command> [args...]]",
 			Stream:   "Animation writes to `/dev/tty` (fallback: `stderr`). Child `stdout` and `stderr` pass through untouched; child `stdin` is passed through when piped or redirected; `/dev/null` when `stdin` is an interactive terminal unless `--stdin` is set.",
-			ExitCode: "Propagates exact exit code of `<command>` (`128 + signal` when terminated by a signal: `130` on `SIGINT`, `143` on `SIGTERM`).",
+			ExitCode: "Propagates exact exit code of `<command>` (`128 + signal` when terminated by a signal: `129` on `SIGHUP`, `130` on `SIGINT`, `131` on `SIGQUIT`, `143` on `SIGTERM`).",
 			Positionals: []ArgSpec{
-				{Name: "title", Required: true, Description: "Spinner label."},
+				{Name: "title", Required: false, Description: "Spinner label (or pass `--title=<t>` for untrusted values)."},
 				{Name: "-- <command> [args...]", Required: false, Description: "Child command executed while spinning."},
 			},
 			Flags: []FlagSpec{
+				flg("-t", "--title", "<title>", nil, "Working...", "", "Spinner label (use `--title=\"$var\"` for untrusted titles)."),
 				flg("-s", "--style", "<style>", []string{"dots", "pulse", "meter", "line"}, "dots", "spin.style", "Spinner animation frames."),
 				flg("-c", "--color", "<color>", nil, "primary", "spin.color", "Spinner glyph color."),
 				flg("-p", "--persist", "", nil, "false", "", "Print final `PASS`/`FAIL` badge with elapsed time on `/dev/tty`."),
@@ -310,13 +311,14 @@ func buildCommandSpecs(grads []string) []CommandSpec {
 			},
 			Rules: []string{
 				"Safe inside `VAR=$(zsp spin \"...\" --persist -- cmd args)`: animation renders on `/dev/tty`, never polluting `VAR`.",
-				"Always separate the child command with `--` so child flags are not parsed by `zsp`.",
+				"Always separate the child command with `--` so child flags are not parsed by `zsp`. For untrusted titles, use `zsp spin --title=\"$var\" -- cmd`.",
 				"Use `--static` for commands that may prompt for input (`sudo`, `ssh`, `git`, `gpg`) so the 80ms spinner redraw does not overwrite the prompt.",
-				"With a terminal attached (`/dev/tty` available): the child stays in the terminal's process group so it can prompt (`sudo`, `ssh`, `git`, `gpg`). The first `Ctrl-C` waits for cleanup; a second `Ctrl-C` kills the child. A `SIGINT` sent directly to `zsp`'s process ID is not passed on (use `SIGTERM` instead). `SIGTERM` reaches the child only (not grandchildren), followed by `SIGKILL` after 5s.",
-				"Without a terminal (CI, cron): the child gets its own process group, and the whole group is signalled, followed by `SIGKILL` after 5s.",
+				"With a terminal attached (`/dev/tty` available): the child stays in the terminal's process group so it can prompt (`sudo`, `ssh`, `git`, `gpg`). The first `Ctrl-C` waits for cleanup; a second `Ctrl-C` kills the child. A `SIGINT` sent directly to `zsp`'s process ID is not passed on (use `SIGTERM` instead). `SIGTERM`, `SIGHUP`, and `SIGQUIT` reach the child only (not grandchildren), followed by `SIGKILL` after 5s.",
+				"Without a terminal (CI, cron): the child gets its own process group, and `SIGTERM`, `SIGHUP`, `SIGQUIT`, and `SIGINT` signal the whole process group, followed by `SIGKILL` after 5s. On Linux, `Pdeathsig` (`SIGKILL`) is set so the child is killed if `zsp` receives `SIGKILL`; macOS has no `Pdeathsig` equivalent, so `SIGKILL` of `zsp` on macOS can leave the child running when no terminal is attached.",
 			},
 			Examples: []string{
 				`COUNT=$(zsp spin "Querying DB..." --persist -- psql -tA -c "SELECT count(*) FROM users")`,
+				`zsp spin --title="$step" -- ./deploy.sh`,
 				`zsp spin "Deploying with sudo..." --static -- sudo ./deploy.sh`,
 			},
 		},
@@ -496,8 +498,8 @@ func renderDocsMarkdown(out io.Writer) {
 	fmt.Fprintln(out, "- **Text is cleaned by default**: Escape sequences, control characters, and Unicode bidi/format characters are stripped automatically. Only a leading `zsp --raw <cmd>` disables this.")
 	fmt.Fprintln(out, "- **Pass untrusted values after `--`**: Use `zsp ok -- \"$msg\"`, `zsp tree --title Files -- \"${files[@]}\"`, or `zsp -- \"$text\"`. Without `--`, values like `--meta` or `--theme` are treated as flags.")
 	fmt.Fprintln(out, "- **Always name the subcommand**: `zsp \"$var\"` treats words like `theme` or `config reset` as commands; use `zsp box -- \"$var\"` or `zsp -- \"$var\"`.")
-	fmt.Fprintln(out, "- **Exit codes**: Display commands always exit `0`. `spin` passes on the child's exit code (`128 + signal` when killed by a signal: `130` for `SIGINT`, `143` for `SIGTERM`). `progress` and `config` exit non-zero on error.")
-	fmt.Fprintln(out, "- **`spin` in scripts**: `stdout` stays clean for `$(...)` capture; use `--static` for commands that prompt (`sudo`, `ssh`, `git`, `gpg`); use `--stdin` only for interactive terminal input (piped `stdin` passes through automatically); prefer `SIGTERM` over `kill -INT` when a terminal is attached.")
+	fmt.Fprintln(out, "- **Exit codes**: Display commands always exit `0`. `spin` passes on the child's exit code (`128 + signal` when killed by a signal: `129` for `SIGHUP`, `130` for `SIGINT`, `131` for `SIGQUIT`, `143` for `SIGTERM`). `progress` and `config` exit non-zero on error.")
+	fmt.Fprintln(out, "- **`spin` in scripts**: `stdout` stays clean for `$(...)` capture; pass untrusted titles via `zsp spin --title=\"$var\" -- cmd`; use `--static` for commands that prompt (`sudo`, `ssh`, `git`, `gpg`); use `--stdin` only for interactive terminal input (piped `stdin` passes through automatically); prefer `SIGTERM` over `kill -INT` when a terminal is attached. `SIGHUP` and `SIGQUIT` are forwarded like `SIGTERM` (5s grace period then `SIGKILL`). On Linux, `Pdeathsig` stops the child if `zsp` is `SIGKILL`ed; on macOS, `SIGKILL` of `zsp` can leave the child running when no terminal is attached.")
 	fmt.Fprintln(out, "- **Log-friendly output**: `NO_COLOR` and `TERM=dumb` disable color. When no terminal is attached (`CI`, `cron`, redirected logs), `spin` and `progress` automatically skip in-place redraws and print only static output.")
 	fmt.Fprintln(out, "\n## 7. Complete Zsh Recipe")
 	for _, r := range spec.Recipes {

@@ -43,6 +43,53 @@ for i in {1..50}; do zsp bar $i 50 "Syncing $i" --in-place; sleep 0.02; done
 find . -type f | zsp progress --total 100 --title "Indexing"
 ```
 
+## Cheat Sheet
+
+### Subcommands
+
+| Command (Aliases) | Syntax | Key Flags | Description |
+| :--- | :--- | :--- | :--- |
+| `banner` (`big`) | `zsp banner <text> [flags]` | `-f, --font block\|compact\|line`<br>`-c, --color <color>`<br>`-g, --gradient <grad>`<br>`--from <#hex> --to <#hex>`<br>`--sub <text>`<br>`--frame` | 3-row block, 2-row compact, or 3-row box-drawing headline banner |
+| `box` | `zsp box <text> [flags]`<br>`zsp -- <text>` | `-t, --title <t>`<br>`--footer <f>`<br>`-b, --border rounded\|double\|heavy\|ascii`<br>`-c, --color <color>`<br>`-g, --gradient <grad>`<br>`-w, --width <cols>` | Word-wrapped callout box sized to terminal width (default subcommand when omitted) |
+| `ok` (`pass`, `success`)<br>`info`<br>`warn` (`warning`)<br>`err` (`fail`, `error`) | `zsp ok <msg> [--meta <detail>]` | `-m, --meta <detail>` | Inverted status pill badge (`PASS`, `INFO`, `WARN`, `FAIL`) with optional right-aligned dot-leader metadata |
+| `step` | `zsp step <curr> <total> <title>` | `-c, --color <color>`<br>`-g, --gradient <grad>` | Full-width phase divider (`━━━ [curr/total] ━━━`) and `▸ <title>` header |
+| `rule` (`hr`) | `zsp rule [label] [flags]` | `-c, --color <color>`<br>`-g, --gradient <grad>`<br>`-w, --width <cols>` | Horizontal divider line (`───`) with optional centered label |
+| `kv` (`card`) | `zsp kv [flags] <k1> <v1> [<k2> <v2> ...]` | `-t, --title <t>`<br>`-c, --color <color>`<br>`-g, --gradient <grad>` | Framed key-value card with aligned dot-leaders |
+| `tree` (`list`) | `zsp tree [flags] <item1> [<item2> ...]` | `-t, --title <t>`<br>`-c, --color <color>` | Unicode checklist (`├─ ●`, `╰─ ●`) with optional root header |
+| `cmd` | `zsp cmd <shell command>` | (none) | Shell command preview with colored gutter (`┃ ▸`) and syntax highlighting |
+| `code` | `zsp code [flags] <line1> [<line2> ...]` | `-t, --title <t>` | Framed multi-line Zsh code block (`╭─ title ───╮`) |
+| `style` | `zsp style <text> [flags]` | `--fg <color>` `--bg <color>`<br>`-g, --gradient <grad>`<br>`--from <#hex> --to <#hex>`<br>`-b, --bold` `--dim`<br>`-i, --italic` `-u, --underline` | Inline styled text |
+| `spin` | `zsp spin [title] [flags] [-- <cmd> [args...]]` | `-t, --title <t>`<br>`-s, --style dots\|pulse\|meter\|line`<br>`-c, --color <color>`<br>`-p, --persist`<br>`--static`<br>`--stdin`<br>`-d, --duration <ms>` | Live spinner on `/dev/tty` (`stdout` stays clean for `$(...)`; propagates `<cmd>` exit code) |
+| `bar` | `zsp bar <curr> <total> [label] [flags]` | `-r, --in-place`<br>`-w, --width <cols>`<br>`-c, --color <color>`<br>`-g, --gradient <grad>` | Half-cell (`█` / `▌` / `░`) progress bar with `%` and `[curr/total]` |
+| `progress` | `<cmd> \| zsp progress [flags]` | `--total <n>`<br>`-t, --title <label>`<br>`-c, --color <color>`<br>`-g, --gradient <grad>` | Stream line counter from `stdin` that renders a live bar on `/dev/tty` |
+| `themes` | `zsp themes` | (none) | List all 20 built-in color palettes with color swatches |
+| `theme` | `zsp theme [<name> \| list \| preview <name>]` | (none) | Set persistent default theme or preview a theme |
+| `config` | `zsp config [list \| set <k> <v> \| reset \| path]` | (none) | Inspect, set, or reset persistent defaults in `~/.config/zsplash/config.json` |
+| `demo` | `zsp demo [--theme <name>]` | `-T, --theme <name>` | Render full visual showcase with copyable Zsh snippets |
+| `help` / `docs` (`schema`, `manual`) | `zsp help [<cmd>]`<br>`zsp docs [--markdown \| --json \| <cmd>]` | `-j, --json`<br>`--markdown` | Per-command help, full Markdown manual, or JSON CLI schema |
+
+### Global Flags & Environment Variables
+
+| Flag / Variable | Description |
+| :--- | :--- |
+| `-T, --theme <name>` | Override the active theme for a single command (`zsp --theme nes banner "HI"`) |
+| `--raw` | Must be the first argument (`zsp --raw <cmd> ...`): allow raw ANSI escapes in input text |
+| `--` | End of flags: treat all remaining arguments as positional text (or child command in `spin`) |
+| `-h, --help` / `-v, --version` | Show command help (`zsp <cmd> --help`) or version (`zsp --version`) |
+| `ZSPLASH_THEME` | Override active theme for the current shell session |
+| `ZSPLASH_CONFIG` | Custom path for `config.json` (default: `~/.config/zsplash/config.json`) |
+| `ZSPLASH_WIDTH` | Force terminal column width (`20..500`; default: `/dev/tty` -> `$COLUMNS` -> `80`) |
+| `NO_COLOR` / `TERM=dumb` | Disable all ANSI color codes and use plain bracket badges (`[PASS]`, `[WARN]`, `[FAIL]`, `[INFO]`) |
+
+### Colors, Gradients & Config Keys
+
+- **`<color>` values**:
+  - **Theme roles**: `primary`, `secondary`, `pass` (`ok`), `warn`, `fail` (`err`), `info`, `muted`, `text`
+  - **Named colors**: `cyan`, `green`, `yellow`, `red`, `magenta`, `purple`, `pink`, `blue`, `orange`, `gold`, `white`, `gray`, `nes-red`, `nes-zapper`, `nes-grey`, `nes-darkgrey`, `nes-black`, `nes-lava`, `nes-blue`, `nes-cobalt`, `nes-green`, `nes-gold`, `nes-orange`, `xbox-green`, `xbox-lime`, `xbox-red`
+  - **Hex**: `#RRGGBB` (e.g. `#00F5D4`)
+- **`<grad>` presets**: `cyber`, `ember`, `ocean`, `sunset`, `matrix`, `gold`, `mono` (or custom `--from "#HEX" --to "#HEX"`)
+- **`zsp config set <key> <value>` keys**: `theme`, `banner.font`, `banner.color`, `box.border`, `box.color`, `step.color`, `rule.color`, `kv.color`, `bar.color`, `spin.style`, `spin.color`, `color.primary`, `color.secondary`, `color.pass`, `color.warn`, `color.fail`, `color.info`, `color.muted`, `color.text`
+
 ## Using `zsp` in Scripts
 
 - **Text is cleaned by default**: Escape sequences, control characters, and Unicode bidi/format characters are stripped automatically. Only a leading `zsp --raw <cmd>` disables this.

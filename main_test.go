@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -128,7 +129,7 @@ func TestDemo(t *testing.T) {
 		"zsh: badges",
 		"zsh: structured layout",
 		"zsh: async & progress",
-		"zsh: themes & defaults",
+		"zsh: themes, defaults & docs",
 		`zsp banner "ZSPLASH"`,
 		`zsp ok   "Database schema verified"   --meta "42ms"`,
 		`zsp kv --title "Release Target"`,
@@ -229,5 +230,42 @@ func TestConfigPersistenceAndOverrides(t *testing.T) {
 	run([]string{"banner", "P1"}, &buf)
 	if !strings.Contains(buf.String(), "38;2;0;245;212m") {
 		t.Fatalf("expected modern primary color (0;245;212) after config reset, got: %q", buf.String())
+	}
+}
+
+func TestDocsAndSchemaAndSubcommandHelp(t *testing.T) {
+	var buf bytes.Buffer
+	run([]string{"docs"}, &buf)
+	md := buf.String()
+	for _, want := range []string{
+		"# zsplash (`zsp`) v",
+		"## 1. Core Execution & Stream Contracts",
+		"## 3. Color System, Built-in Palettes & Gradients",
+		"## 5. Subcommand Reference",
+		"### `zsp spin`",
+	} {
+		if !strings.Contains(md, want) {
+			t.Errorf("expected `zsp docs` markdown to contain %q", want)
+		}
+	}
+
+	buf.Reset()
+	run([]string{"docs", "--json"}, &buf)
+	var spec CLISpec
+	if err := json.Unmarshal(buf.Bytes(), &spec); err != nil {
+		t.Fatalf("expected valid JSON from `zsp docs --json`, got error: %v", err)
+	}
+	if spec.Name != "zsplash" || spec.Alias != "zsp" || len(spec.Commands) < 15 || len(spec.Themes) != 10 {
+		t.Fatalf("unexpected CLI JSON spec structure: commands=%d, themes=%d", len(spec.Commands), len(spec.Themes))
+	}
+
+	// Verify both `zsp help spin` and `zsp spin --help` render subcommand specification
+	for _, args := range [][]string{{"help", "spin"}, {"spin", "--help"}, {"banner", "-h"}} {
+		buf.Reset()
+		run(args, &buf)
+		helpOut := stripANSI(buf.String())
+		if !strings.Contains(helpOut, "SYNOPSIS") || !strings.Contains(helpOut, "STREAM & EXIT CONTRACT") {
+			t.Errorf("args %v: expected SYNOPSIS and STREAM & EXIT CONTRACT in subcommand help, got:\n%s", args, helpOut)
+		}
 	}
 }

@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-var version = "0.3.1"
+var version = "0.4.0"
 
 func main() {
 	code := runWithExit(os.Args[1:], os.Stdout, os.Stderr)
@@ -31,13 +31,17 @@ func extractGlobalThemeFlag(args []string) []string {
 			filtered = append(filtered, args[i:]...)
 			break
 		}
-		if a == "--theme" && i+1 < len(args) {
+		if (a == "--theme" || a == "-T") && i+1 < len(args) {
 			cliThemeOverride = args[i+1]
 			i++
 			continue
 		}
 		if strings.HasPrefix(a, "--theme=") {
 			cliThemeOverride = strings.TrimPrefix(a, "--theme=")
+			continue
+		}
+		if strings.HasPrefix(a, "-T=") {
+			cliThemeOverride = strings.TrimPrefix(a, "-T=")
 			continue
 		}
 		filtered = append(filtered, a)
@@ -58,14 +62,23 @@ func runWithExit(rawArgs []string, out io.Writer, errOut io.Writer) int {
 	rest := args[1:]
 	pal := activePalette()
 
+	if cmd != "help" && cmd != "-h" && cmd != "--help" && cmd != "docs" && cmd != "schema" && cmd != "manual" && hasHelpFlag(rest) {
+		if spec, ok := findCommandSpec(cmd); ok {
+			renderCommandHelp(out, spec)
+			return 0
+		}
+	}
+
 	switch cmd {
 	case "-v", "--version", "version":
 		fmt.Fprintf(out, "zsplash (zsp) v%s\n", version)
 		return 0
 
 	case "-h", "--help", "help":
-		printHelp(out)
-		return 0
+		return handleDocsCommand(out, "help", rest)
+
+	case "docs", "schema", "manual":
+		return handleDocsCommand(out, "docs", rest)
 
 	case "themes":
 		renderThemesCatalog(out)
@@ -600,12 +613,14 @@ func renderDemo(out io.Writer) {
 			swatches, ansiDim(), t.Description, ansiReset())
 	}
 	fmt.Fprintln(out)
-	renderCodeBlock(out, "zsh: themes & defaults", []string{
+	renderCodeBlock(out, "zsh: themes, defaults & docs", []string{
 		`zsp themes`,
 		`zsp demo --theme nes`,
 		`zsp theme nes`,
 		`zsp config set banner.font compact`,
-		`zsp config set color.primary "#FC7460"`,
+		`zsp help spin`,
+		`zsp docs`,
+		`zsp docs --json`,
 	})
 }
 
@@ -634,5 +649,8 @@ func printHelp(out io.Writer) {
 	fmt.Fprintln(out, "  zsp theme <name>   Set your persistent default color palette")
 	fmt.Fprintln(out, "  zsp config         Show or override persistent defaults (zsp config set <key> <val>)")
 	fmt.Fprintln(out, "  zsp demo           Run full visual showcase (try: zsp demo --theme nes)")
+	fmt.Fprintln(out, "  zsp help <cmd>     Show detailed specification, stream rules, and examples for <cmd>")
+	fmt.Fprintln(out, "  zsp docs           Output complete Markdown technical reference manual")
+	fmt.Fprintln(out, "  zsp docs --json    Output complete machine-readable JSON CLI schema")
 	fmt.Fprintln(out, "  zsp --version      Show version info")
 }

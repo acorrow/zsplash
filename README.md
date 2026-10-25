@@ -43,6 +43,19 @@ for i in {1..50}; do zsp bar $i 50 "Syncing $i" --in-place; sleep 0.02; done
 find . -type f | zsp progress --total 100 --title "Indexing"
 ```
 
+## Using `zsp` in Scripts
+
+- **Text is cleaned by default**: Escape sequences, control characters, and Unicode bidi/format characters are stripped automatically. Only a leading `zsp --raw <cmd>` disables this.
+- **Pass untrusted values after `--`**: Use `zsp ok -- "$msg"`, `zsp tree --title Files -- "${files[@]}"`, or `zsp -- "$text"`. Without `--`, values like `--meta` or `--theme` are treated as flags.
+- **Always name the subcommand**: `zsp "$var"` treats words like `theme` or `config reset` as commands; use `zsp box -- "$var"` or `zsp -- "$var"`.
+- **Exit codes**: Display commands always exit `0`. `spin` passes on the child's exit code (`128 + signal` when killed by a signal). `progress` and `config` exit non-zero on error.
+- **`spin` in scripts**:
+  - `stdout` stays clean for `$(...)` capture.
+  - Use `--static` for commands that prompt (`sudo`, `ssh`, `git`, `gpg`).
+  - Use `--stdin` only for interactive input (piped `stdin` is passed through automatically).
+  - Prefer `SIGTERM` over `kill -INT` when a terminal is attached.
+- **Log-friendly output**: `NO_COLOR` and `TERM=dumb` disable color. When no terminal is attached (`CI`, `cron`, logs redirected to a file), `spin` and `progress` skip in-place redraws automatically.
+
 ## Themes & Config
 
 Built-in palettes: `modern` (default), `nes`, `snes`, `xbox`, `halo`, `gameboy`, `pipboy`, `dracula`, `catppuccin`, `nord`, `gruvbox`, `tokyonight`, `monokai`, `solarized`, `rosepine`, `everforest`, `kanagawa`, `synthwave`, `industrial`, `amber`.

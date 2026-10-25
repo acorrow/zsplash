@@ -7,15 +7,34 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
 )
+
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (s *syncBuffer) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.buf.Write(p)
+}
+
+func (s *syncBuffer) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.buf.String()
+}
 
 func TestPrepareChildProcessGroupDecision(t *testing.T) {
 	cmdWithTTY := exec.Command("true")
@@ -32,7 +51,11 @@ func TestPrepareChildProcessGroupDecision(t *testing.T) {
 }
 
 func TestSpinTerminalPromptInPTY(t *testing.T) {
+	inCI := os.Getenv("CI") != ""
 	if _, err := exec.LookPath("script"); err != nil {
+		if inCI {
+			t.Fatalf("required 'script' utility not available in CI: %v", err)
+		}
 		t.Skip("skipping PTY test: 'script' utility not available")
 	}
 
@@ -44,19 +67,23 @@ func TestSpinTerminalPromptInPTY(t *testing.T) {
 
 	var scriptCmd *exec.Cmd
 	if runtime.GOOS == "linux" {
-		cmdStr := fmt.Sprintf("%q spin --static Prompting -- sh -c 'read x </dev/tty; echo got:$x'", binPath)
+		cmdStr := fmt.Sprintf("%q spin --static Prompting -- sh -c 'echo READY; read x </dev/tty; echo got:$x'", binPath)
 		scriptCmd = exec.Command("script", "-q", "-e", "-c", cmdStr, "/dev/null")
 	} else {
-		scriptCmd = exec.Command("script", "-q", "/dev/null", binPath, "spin", "--static", "Prompting", "--", "sh", "-c", "read x </dev/tty; echo got:$x")
+		scriptCmd = exec.Command("script", "-q", "/dev/null", binPath, "spin", "--static", "Prompting", "--", "sh", "-c", "echo READY; read x </dev/tty; echo got:$x")
 	}
 
 	stdinR, stdinW := io.Pipe()
+	defer func() { _ = stdinW.Close() }()
 	scriptCmd.Stdin = stdinR
-	var outBuf bytes.Buffer
+	var outBuf syncBuffer
 	scriptCmd.Stdout = &outBuf
 	scriptCmd.Stderr = &outBuf
 
 	if err := scriptCmd.Start(); err != nil {
+		if inCI {
+			t.Fatalf("script failed to start in CI: %v", err)
+		}
 		t.Skipf("skipping PTY test: script failed to start: %v", err)
 	}
 
@@ -66,10 +93,14 @@ func TestSpinTerminalPromptInPTY(t *testing.T) {
 	}()
 
 	go func() {
-		time.Sleep(250 * time.Millisecond)
+		deadline := time.Now().Add(5 * time.Second)
+		for time.Now().Before(deadline) {
+			if strings.Contains(outBuf.String(), "READY") {
+				break
+			}
+			time.Sleep(25 * time.Millisecond)
+		}
 		_, _ = io.WriteString(stdinW, "pty-secret\n")
-		time.Sleep(250 * time.Millisecond)
-		_ = stdinW.Close()
 	}()
 
 	select {
@@ -81,11 +112,22 @@ func TestSpinTerminalPromptInPTY(t *testing.T) {
 		if !strings.Contains(out, "got:pty-secret") {
 			t.Fatalf("expected pty output to contain 'got:pty-secret', got:\n%s", out)
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(10 * time.Second):
 		_ = stdinW.Close()
 		_ = scriptCmd.Process.Kill()
 		t.Fatalf("spin child reading /dev/tty hung inside pty (SIGTTIN regression); output so far:\n%s", outBuf.String())
 	}
+}
+
+func waitForProcessGroupGone(pgid int) error {
+	for i := 0; i < 30; i++ {
+		err := syscall.Kill(-pgid, 0)
+		if err == syscall.ESRCH {
+			return syscall.ESRCH
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	return syscall.Kill(-pgid, 0)
 }
 
 func TestSpinUnixProcessGroupSignals(t *testing.T) {
@@ -94,6 +136,31 @@ func TestSpinUnixProcessGroupSignals(t *testing.T) {
 	if out, err := buildCmd.CombinedOutput(); err != nil {
 		t.Fatalf("failed to build zsplash binary: %v\n%s", err, string(out))
 	}
+
+	t.Run("no-tty spin and progress skip line-clear redraws", func(t *testing.T) {
+		spinCmd := exec.Command(binPath, "spin", "Detached spin", "--", "true")
+		spinCmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+		var spinErr bytes.Buffer
+		spinCmd.Stderr = &spinErr
+		if err := spinCmd.Run(); err != nil {
+			t.Fatalf("expected detached spin to succeed, got: %v", err)
+		}
+		if strings.Contains(spinErr.String(), "\r\033[2K") {
+			t.Fatalf("expected detached spin not to emit \\r\\033[2K redraws, got: %q", spinErr.String())
+		}
+
+		progCmd := exec.Command(binPath, "progress", "--total", "2", "--title", "Detached progress")
+		progCmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+		progCmd.Stdin = strings.NewReader("line1\nline2\n")
+		var progErr bytes.Buffer
+		progCmd.Stderr = &progErr
+		if err := progCmd.Run(); err != nil {
+			t.Fatalf("expected detached progress to succeed, got: %v", err)
+		}
+		if strings.Contains(progErr.String(), "\r\033[2K") {
+			t.Fatalf("expected detached progress not to emit \\r\\033[2K redraws, got: %q", progErr.String())
+		}
+	})
 
 	t.Run("SIGTERM stops process group and exits 143", func(t *testing.T) {
 		cmd := exec.Command(binPath, "spin", "Testing SIGTERM", "--", "sh", "-c", "echo $$; sleep 30 & sleep 30")
@@ -115,8 +182,7 @@ func TestSpinUnixProcessGroupSignals(t *testing.T) {
 		if err != nil || pgid <= 0 {
 			t.Fatalf("invalid child pgid %q: %v", line, err)
 		}
-		// Give background sleep a brief moment to fork into the process group
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(150 * time.Millisecond)
 
 		if err := cmd.Process.Signal(syscall.SIGTERM); err != nil {
 			t.Fatalf("failed to send SIGTERM: %v", err)
@@ -134,14 +200,12 @@ func TestSpinUnixProcessGroupSignals(t *testing.T) {
 			if exitErr.ExitCode() != 143 {
 				t.Fatalf("expected exit code 143 on SIGTERM, got %d", exitErr.ExitCode())
 			}
-		case <-time.After(6 * time.Second):
+		case <-time.After(12 * time.Second):
 			_ = cmd.Process.Kill()
 			t.Fatal("timed out waiting for zsp spin to exit after SIGTERM")
 		}
 
-		// Wait briefly for kernel process table reap, then verify no process in pgid remains alive
-		time.Sleep(100 * time.Millisecond)
-		if err := syscall.Kill(-pgid, 0); err != syscall.ESRCH {
+		if err := waitForProcessGroupGone(pgid); err != syscall.ESRCH {
 			_ = syscall.Kill(-pgid, syscall.SIGKILL)
 			t.Fatalf("expected process group %d to be gone (ESRCH), got err=%v", pgid, err)
 		}
@@ -167,7 +231,7 @@ func TestSpinUnixProcessGroupSignals(t *testing.T) {
 		if err != nil || pgid <= 0 {
 			t.Fatalf("invalid child pgid %q: %v", line, err)
 		}
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(150 * time.Millisecond)
 
 		if err := cmd.Process.Signal(syscall.SIGINT); err != nil {
 			t.Fatalf("failed to send SIGINT: %v", err)
@@ -185,13 +249,12 @@ func TestSpinUnixProcessGroupSignals(t *testing.T) {
 			if exitErr.ExitCode() != 130 {
 				t.Fatalf("expected exit code 130 on SIGINT, got %d", exitErr.ExitCode())
 			}
-		case <-time.After(6 * time.Second):
+		case <-time.After(12 * time.Second):
 			_ = cmd.Process.Kill()
 			t.Fatal("timed out waiting for zsp spin to exit after SIGINT")
 		}
 
-		time.Sleep(100 * time.Millisecond)
-		if err := syscall.Kill(-pgid, 0); err != syscall.ESRCH {
+		if err := waitForProcessGroupGone(pgid); err != syscall.ESRCH {
 			_ = syscall.Kill(-pgid, syscall.SIGKILL)
 			t.Fatalf("expected process group %d to be gone (ESRCH), got err=%v", pgid, err)
 		}

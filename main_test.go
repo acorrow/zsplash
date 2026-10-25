@@ -116,9 +116,28 @@ func TestBarAndSpin(t *testing.T) {
 	os.Setenv("NO_COLOR", "1")
 	defer os.Unsetenv("NO_COLOR")
 	var spinOut, spinErr bytes.Buffer
-	code := runWithExit([]string{"spin", "Testing spinner", "--duration", "40", "--persist"}, &spinOut, &spinErr)
+	code := runWithExit([]string{"spin", "Testing spinner", "--duration", "40"}, &spinOut, &spinErr)
 	if code != 0 {
 		t.Errorf("expected exit code 0 from timed spinner, got %d", code)
+	}
+	if strings.Contains(spinErr.String(), "\033[2K") || strings.Contains(spinErr.String(), "\033[?25l") {
+		t.Errorf("expected non-TTY spinner not to emit line-clear or cursor-hide escapes, got %q", spinErr.String())
+	}
+	if !strings.Contains(stripANSI(spinErr.String()), "▸ Testing spinner") || !strings.Contains(stripANSI(spinErr.String()), "[PASS]") {
+		t.Errorf("expected non-TTY spinner to print static title and final PASS badge, got %q", stripANSI(spinErr.String()))
+	}
+
+	// Verify progress with non-TTY output skips per-line redraws and only prints the final badge
+	var progErr bytes.Buffer
+	progCode := runStreamProgress(strings.NewReader("a\nb\nc\n"), &progErr, 3, "Batch sync", "", "")
+	if progCode != 0 {
+		t.Errorf("expected exit code 0 from progress, got %d", progCode)
+	}
+	if strings.Contains(progErr.String(), "\033[2K") {
+		t.Errorf("expected non-TTY progress not to emit line-clear redraws, got %q", progErr.String())
+	}
+	if !strings.Contains(stripANSI(progErr.String()), "[PASS]") || !strings.Contains(stripANSI(progErr.String()), "3 items") {
+		t.Errorf("expected non-TTY progress to print final PASS badge with item count, got %q", stripANSI(progErr.String()))
 	}
 
 	// Verify --static prints title once without redraw escapes and emits final PASS badge
@@ -278,10 +297,17 @@ func TestDocsAndSchemaAndSubcommandHelp(t *testing.T) {
 		"## 3. Color System, Built-in Palettes & Gradients",
 		"## 5. Subcommand Reference",
 		"### `zsp spin`",
+		"## 6. Using `zsp` in Scripts",
 	} {
 		if !strings.Contains(md, want) {
 			t.Errorf("expected `zsp docs` markdown to contain %q", want)
 		}
+	}
+
+	buf.Reset()
+	run([]string{"help"}, &buf)
+	if !strings.Contains(stripANSI(buf.String()), "List all 20 built-in color palettes") {
+		t.Errorf("expected `zsp help` to list 20 built-in color palettes, got:\n%s", stripANSI(buf.String()))
 	}
 
 	buf.Reset()

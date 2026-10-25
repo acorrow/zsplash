@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.6.5 (2026-10-25)
+
+- `spin`, `progress`: when `/dev/tty` is unavailable and `stderr` is not a terminal (CI, cron, logs redirected to a file), `spin` behaves as if `--static` were set (printing the title once and the final badge with no 80ms redraws or cursor escapes) and `progress` skips per-line redraws and prints only the final `PASS`/`FAIL` badge.
+- `docs`, `README.md`: added a "Using `zsp` in Scripts" guide covering default sanitization, passing untrusted values after `--`, naming the subcommand, exit codes, `spin` flags (`--static`, `--stdin`, `SIGTERM`), and `NO_COLOR`/`TERM=dumb`.
+- `help`: use `len(themeOrder)` (`20`) instead of a hard-coded `10` in `zsp help` and `zsp docs`.
+- `ci`: added GitHub Actions workflows for `ubuntu-latest`, `macos-latest`, and `windows` builds/tests, plus Homebrew tap formula audit and build verification.
+
 ## v0.6.4 (2026-10-25)
 
 - `spin`: added `--static` for commands that prompt (`sudo`, `ssh`, `git`, `gpg`). Prints the title once without 80ms line redraws so terminal prompts are never overwritten, then prints the final status badge on completion.

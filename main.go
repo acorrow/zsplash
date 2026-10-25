@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-var version = "0.6.4"
+var version = "0.6.5"
 
 func main() {
 	code := runWithExit(os.Args[1:], os.Stdout, os.Stderr)
@@ -706,7 +706,7 @@ func printHelp(out io.Writer) {
 	fmt.Fprintln(out, "  zsp spin <title> [--style dots|pulse|meter|line] [--persist] [--static] -- <cmd> [args...]")
 	fmt.Fprintln(out, "  zsp bar <curr> <total> [label] [--in-place|-r] [--color <c>]")
 	fmt.Fprintln(out, "  zsp progress [--total <n>] [--title <t>] (reads lines from stdin)")
-	fmt.Fprintln(out, "  zsp themes         List all 10 built-in color palettes (nes, snes, dracula, nord, etc.)")
+	fmt.Fprintf(out, "  zsp themes         List all %d built-in color palettes (nes, snes, dracula, nord, etc.)\n", len(themeOrder))
 	fmt.Fprintln(out, "  zsp theme <name>   Set your persistent default color palette")
 	fmt.Fprintln(out, "  zsp config         Show or override persistent defaults (zsp config set <key> <val>)")
 	fmt.Fprintln(out, "  zsp demo           Run full visual showcase (try: zsp demo --theme nes)")

@@ -347,7 +347,7 @@ func buildCommandSpecs(grads []string) []CommandSpec {
 		},
 		{
 			Name: "themes", Category: "Themes & Configuration",
-			Summary:  "List all 10 built-in color palettes with live swatches.",
+			Summary:  fmt.Sprintf("List all %d built-in color palettes with live swatches.", len(themeOrder)),
 			Synopsis: "zsp themes", Stream: "stdout", ExitCode: "0",
 			Examples: []string{`zsp themes`},
 		},
@@ -492,7 +492,14 @@ func renderDocsMarkdown(out io.Writer) {
 			fmt.Fprintf(out, "  - **Note**: %s\n", r)
 		}
 	}
-	fmt.Fprintln(out, "\n## 6. Complete Zsh Recipe")
+	fmt.Fprintln(out, "\n## 6. Using `zsp` in Scripts")
+	fmt.Fprintln(out, "- **Text is cleaned by default**: Escape sequences, control characters, and Unicode bidi/format characters are stripped automatically. Only a leading `zsp --raw <cmd>` disables this.")
+	fmt.Fprintln(out, "- **Pass untrusted values after `--`**: Use `zsp ok -- \"$msg\"`, `zsp tree --title Files -- \"${files[@]}\"`, or `zsp -- \"$text\"`. Without `--`, values like `--meta` or `--theme` are treated as flags.")
+	fmt.Fprintln(out, "- **Always name the subcommand**: `zsp \"$var\"` treats words like `theme` or `config reset` as commands; use `zsp box -- \"$var\"` or `zsp -- \"$var\"`.")
+	fmt.Fprintln(out, "- **Exit codes**: Display commands always exit `0`. `spin` passes on the child's exit code (`128 + signal` when killed by a signal: `130` for `SIGINT`, `143` for `SIGTERM`). `progress` and `config` exit non-zero on error.")
+	fmt.Fprintln(out, "- **`spin` in scripts**: `stdout` stays clean for `$(...)` capture; use `--static` for commands that prompt (`sudo`, `ssh`, `git`, `gpg`); use `--stdin` only for interactive terminal input (piped `stdin` passes through automatically); prefer `SIGTERM` over `kill -INT` when a terminal is attached.")
+	fmt.Fprintln(out, "- **Log-friendly output**: `NO_COLOR` and `TERM=dumb` disable color. When no terminal is attached (`CI`, `cron`, redirected logs), `spin` and `progress` automatically skip in-place redraws and print only static output.")
+	fmt.Fprintln(out, "\n## 7. Complete Zsh Recipe")
 	for _, r := range spec.Recipes {
 		fmt.Fprintf(out, "```zsh\n%s\n```\n", r.Code)
 	}

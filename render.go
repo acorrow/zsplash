@@ -673,7 +673,14 @@ func openTTYWriter(fallback io.Writer) (io.Writer, bool, func()) {
 	if tty, err := os.OpenFile("/dev/tty", os.O_WRONLY, 0); err == nil {
 		return tty, true, func() { _ = tty.Close() }
 	}
-	return fallback, false, func() {}
+	return fallback, isWriterTerminal(fallback), func() {}
+}
+
+func isWriterTerminal(w io.Writer) bool {
+	if f, ok := w.(*os.File); ok {
+		return isTerminal(f)
+	}
+	return false
 }
 
 func isTerminal(f *os.File) bool {
@@ -764,13 +771,14 @@ func runSpinner(stdout, stderr io.Writer, opts SpinOptions) int {
 		}()
 	}
 
-	if opts.Static {
+	staticMode := opts.Static || !hasTTY
+	if staticMode {
 		fmt.Fprintf(ttyOut, "  %s%s▸%s %s%s%s\n", ansiBold(), c.fgANSI(), ansiReset(), ansiBold(), title, ansiReset())
 	} else if !noColorEnabled() {
 		fmt.Fprint(ttyOut, "\033[?25l")
 	}
 	restoreTerminal := func() {
-		if opts.Static {
+		if staticMode {
 			return
 		}
 		if !noColorEnabled() {
@@ -844,12 +852,12 @@ func runSpinner(stdout, stderr io.Writer, opts SpinOptions) int {
 				renderPillBadge(ttyOut, "FAIL", pal.Fail, title, elapsed)
 				return exitCodeFromError(err)
 			}
-			if opts.Persist || opts.Static {
+			if opts.Persist || staticMode {
 				renderPillBadge(ttyOut, "PASS", pal.Pass, title, elapsed)
 			}
 			return 0
 		case <-ticker.C:
-			if opts.Static {
+			if staticMode {
 				continue
 			}
 			termWidth := detectTermWidth()
@@ -959,7 +967,7 @@ func renderBar(out io.Writer, opts BarOptions) {
 }
 
 func runStreamProgress(in io.Reader, out io.Writer, total int, title, colorSpec, gradSpec string) int {
-	ttyOut, _, closeTTY := openTTYWriter(out)
+	ttyOut, hasTTY, closeTTY := openTTYWriter(out)
 	defer closeTTY()
 	if total <= 0 {
 		total = 100
@@ -972,15 +980,21 @@ func runStreamProgress(in io.Reader, out io.Writer, total int, title, colorSpec,
 	scanner := bufio.NewScanner(in)
 	scanner.Buffer(make([]byte, 64*1024), 10*1024*1024)
 	count := 0
-	renderBar(ttyOut, BarOptions{Current: 0, Total: total, Label: title, Color: colorSpec, Gradient: gradSpec, InPlace: true})
+	if hasTTY {
+		renderBar(ttyOut, BarOptions{Current: 0, Total: total, Label: title, Color: colorSpec, Gradient: gradSpec, InPlace: true})
+	}
 	for scanner.Scan() {
 		count++
 		if count > total {
 			total = count
 		}
-		renderBar(ttyOut, BarOptions{Current: count, Total: total, Label: title, Color: colorSpec, Gradient: gradSpec, InPlace: true})
+		if hasTTY {
+			renderBar(ttyOut, BarOptions{Current: count, Total: total, Label: title, Color: colorSpec, Gradient: gradSpec, InPlace: true})
+		}
 	}
-	fmt.Fprint(ttyOut, "\r\033[2K")
+	if hasTTY {
+		fmt.Fprint(ttyOut, "\r\033[2K")
+	}
 	if err := scanner.Err(); err != nil {
 		renderPillBadge(ttyOut, "FAIL", activePalette().Fail, title, err.Error())
 		return 1

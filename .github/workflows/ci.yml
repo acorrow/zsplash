@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+    tags: ["v*"]
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Ensure script utility is installed on Linux
+        if: runner.os == 'Linux'
+        run: |
+          if ! command -v script >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y bsdextrautils util-linux
+          fi
+
+      - name: Run go vet
+        run: go vet ./...
+
+      - name: Run unit and PTY tests
+        env:
+          CI: "true"
+        run: go test -v ./...
+
+      - name: Cross-build for Windows
+        if: runner.os == 'Linux'
+        env:
+          GOOS: windows
+          GOARCH: amd64
+          CGO_ENABLED: "0"
+        run: go build -v -o zsplash.exe .

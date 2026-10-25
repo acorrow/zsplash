@@ -664,11 +664,11 @@ type SpinOptions struct {
 	Command             []string
 }
 
-func openTTYWriter(fallback io.Writer) (io.Writer, func()) {
+func openTTYWriter(fallback io.Writer) (io.Writer, bool, func()) {
 	if tty, err := os.OpenFile("/dev/tty", os.O_WRONLY, 0); err == nil {
-		return tty, func() { _ = tty.Close() }
+		return tty, true, func() { _ = tty.Close() }
 	}
-	return fallback, func() {}
+	return fallback, false, func() {}
 }
 
 func isTerminal(f *os.File) bool {
@@ -705,7 +705,7 @@ func exitCodeFromError(err error) int {
 }
 
 func runSpinner(stdout, stderr io.Writer, opts SpinOptions) int {
-	ttyOut, closeTTY := openTTYWriter(stderr)
+	ttyOut, hasTTY, closeTTY := openTTYWriter(stderr)
 	defer closeTTY()
 	styleName := strings.ToLower(strings.TrimSpace(opts.Style))
 	if styleName == "" {
@@ -733,7 +733,6 @@ func runSpinner(stdout, stderr io.Writer, opts SpinOptions) int {
 	start := time.Now()
 	doneCh := make(chan error, 1)
 	var cmd *exec.Cmd
-	var interactive bool
 
 	if len(opts.Command) > 0 {
 		cmd = exec.Command(opts.Command[0], opts.Command[1:]...) // #nosec G204
@@ -743,8 +742,7 @@ func runSpinner(stdout, stderr io.Writer, opts SpinOptions) int {
 		if opts.Stdin || !stdinTTY {
 			cmd.Stdin = os.Stdin
 		}
-		interactive = cmd.Stdin == os.Stdin && stdinTTY
-		prepareChild(cmd, interactive)
+		prepareChild(cmd, hasTTY)
 		if err := cmd.Start(); err != nil {
 			renderPillBadge(ttyOut, "FAIL", pal.Fail, title, err.Error())
 			return 1
@@ -794,9 +792,12 @@ func runSpinner(stdout, stderr io.Writer, opts SpinOptions) int {
 				sysSig = s
 			}
 			if sigCount == 1 {
-				if !(sysSig == syscall.SIGINT && interactive) {
-					signalChild(cmd, sysSig)
+				if sysSig == syscall.SIGINT && hasTTY {
+					// A terminal is attached and already delivered SIGINT to the foreground process group;
+					// let the child take as long as it needs to clean up until a second Ctrl-C arrives.
+					continue
 				}
+				signalChild(cmd, sysSig)
 				killTimer = time.After(5 * time.Second)
 				continue
 			}
@@ -945,7 +946,7 @@ func renderBar(out io.Writer, opts BarOptions) {
 }
 
 func runStreamProgress(in io.Reader, out io.Writer, total int, title, colorSpec, gradSpec string) int {
-	ttyOut, closeTTY := openTTYWriter(out)
+	ttyOut, _, closeTTY := openTTYWriter(out)
 	defer closeTTY()
 	if total <= 0 {
 		total = 100

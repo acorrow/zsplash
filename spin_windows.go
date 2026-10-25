@@ -7,7 +7,7 @@ import (
 	"syscall"
 )
 
-func prepareChild(cmd *exec.Cmd, interactive bool) {}
+func prepareChild(cmd *exec.Cmd, hasTTY bool) {}
 
 func signalChild(cmd *exec.Cmd, sig syscall.Signal) {
 	if cmd == nil || cmd.Process == nil {

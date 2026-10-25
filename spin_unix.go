@@ -7,8 +7,8 @@ import (
 	"syscall"
 )
 
-func prepareChild(cmd *exec.Cmd, interactive bool) {
-	if !interactive {
+func prepareChild(cmd *exec.Cmd, hasTTY bool) {
+	if !hasTTY {
 		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	}
 }

@@ -464,6 +464,18 @@ func TestSpinPipedInputAndConfigSymlinks(t *testing.T) {
 			t.Fatalf("expected target config %q to be updated to 'nes', got: %q (err=%v)", realCfg, string(updatedBytes), err)
 		}
 
+		// Resetting through a symlink removes the symlink itself, leaving the target file in place
+		buf.Reset()
+		if code := runWithExit([]string{"config", "reset"}, &buf, &buf); code != 0 {
+			t.Fatalf("expected config reset through valid symlink to succeed, got code %d", code)
+		}
+		if _, err := os.Lstat(linkCfg); !os.IsNotExist(err) {
+			t.Fatalf("expected symlink %q to be removed on config reset, got err=%v", linkCfg, err)
+		}
+		if _, err := os.Stat(realCfg); err != nil {
+			t.Fatalf("expected real target file %q to remain intact after symlink reset: %v", realCfg, err)
+		}
+
 		// Symlink to a non-config file (fake .zshrc) is refused
 		fakeZshrc := filepath.Join(tmpDir, ".zshrc")
 		origZshrc := "export EDITOR=vim\n"

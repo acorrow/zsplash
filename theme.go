@@ -619,12 +619,14 @@ func handleConfigCommand(out io.Writer, args []string) int {
 	case "reset":
 		rawPath := configFilePath()
 		resolved := resolvedConfigPath()
-		if resolved != "" {
+		if rawPath != "" && resolved != "" {
 			if err := validateExistingConfigFile(resolved); err != nil {
 				renderPillBadge(out, "FAIL", activePalette().Fail, err.Error(), "")
 				return 1
 			}
-			_ = os.Remove(filepath.Clean(resolved))
+			// Remove rawPath so resetting a symlinked config removes only the symlink,
+			// never deleting the target file in a dotfiles repo.
+			_ = os.Remove(filepath.Clean(rawPath))
 		}
 		activeConfig = UserConfig{Colors: make(map[string]string)}
 		renderPillBadge(out, "PASS", activePalette().Pass, "Configuration reset to defaults", rawPath)

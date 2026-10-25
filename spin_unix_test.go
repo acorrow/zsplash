@@ -22,6 +22,7 @@ func TestSpinUnixProcessGroupSignals(t *testing.T) {
 
 	t.Run("SIGTERM stops process group and exits 143", func(t *testing.T) {
 		cmd := exec.Command(binPath, "spin", "Testing SIGTERM", "--", "sh", "-c", "echo $$; sleep 30 & sleep 30")
+		cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 		stdout, err := cmd.StdoutPipe()
 		if err != nil {
 			t.Fatal(err)
@@ -73,6 +74,7 @@ func TestSpinUnixProcessGroupSignals(t *testing.T) {
 
 	t.Run("SIGINT via kill stops child and exits 130", func(t *testing.T) {
 		cmd := exec.Command(binPath, "spin", "Testing SIGINT", "--", "sh", "-c", "echo $$; sleep 30")
+		cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 		stdout, err := cmd.StdoutPipe()
 		if err != nil {
 			t.Fatal(err)

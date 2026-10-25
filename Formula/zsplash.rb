@@ -1,8 +1,8 @@
 class Zsplash < Formula
   desc "Lightweight CLI utility for colorful, expressive Zsh & terminal text (includes zsp alias)"
   homepage "https://github.com/acorrow/zsplash"
-  url "https://github.com/acorrow/zsplash/archive/refs/tags/v0.2.0.tar.gz"
-  sha256 "6e2e8a80a51ba75bce05d0df0fc1f7f7add0ea58b5dbd342774f4a26df2a52c4"
+  url "https://github.com/acorrow/zsplash/archive/refs/tags/v0.2.1.tar.gz"
+  sha256 "1159689a2f79e229123d733e6c768d80ed43f69c227213fa7b967ed1296d644e"
   license "MIT"
   head "https://github.com/acorrow/zsplash.git", branch: "main"
 

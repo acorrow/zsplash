@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -35,12 +36,9 @@ var cachedWidthAt time.Time
 
 func stripANSI(s string) string { return ansiRegex.ReplaceAllString(s, "") }
 
-// sanitizeText removes terminal escape sequences and C0/DEL/C1 control characters from user input
-// unless --raw is explicitly enabled.
-func sanitizeText(s string, allowNewline bool) string {
-	if rawOutputEnabled {
-		return s
-	}
+// stripFormattingAndControls removes terminal escape sequences, C0/DEL/C1 control characters,
+// and Unicode format characters (unicode.Cf, including bidi overrides, except U+200D ZWJ).
+func stripFormattingAndControls(s string, allowNewline bool) string {
 	cleaned := stripANSI(s)
 	var b strings.Builder
 	b.Grow(len(cleaned))
@@ -56,6 +54,8 @@ func sanitizeText(s string, allowNewline bool) string {
 			b.WriteString("  ")
 		case r < 0x20 || r == 0x7f || (r >= 0x80 && r <= 0x9f):
 			continue
+		case unicode.Is(unicode.Cf, r) && r != '\u200d':
+			continue
 		default:
 			b.WriteRune(r)
 		}
@@ -63,7 +63,18 @@ func sanitizeText(s string, allowNewline bool) string {
 	return b.String()
 }
 
-func visibleLen(s string) int { return utf8.RuneCountInString(sanitizeText(s, true)) }
+// sanitizeText removes terminal escape sequences, control characters, and bidi format runes
+// from user input unless --raw (or ZSPLASH_RAW=1) is explicitly enabled.
+func sanitizeText(s string, allowNewline bool) string {
+	if rawOutputEnabled {
+		return s
+	}
+	return stripFormattingAndControls(s, allowNewline)
+}
+
+func visibleLen(s string) int {
+	return utf8.RuneCountInString(stripFormattingAndControls(s, true))
+}
 
 func clampWidth(w, minW, maxW int) int {
 	if w < minW {
@@ -258,9 +269,9 @@ func parseLiteralColor(spec string, fallback RGB) RGB {
 	}
 	s = strings.TrimPrefix(s, "#")
 	if len(s) == 6 {
-		r, e1 := strconv.ParseInt(s[0:2], 16, 32)
-		g, e2 := strconv.ParseInt(s[2:4], 16, 32)
-		b, e3 := strconv.ParseInt(s[4:6], 16, 32)
+		r, e1 := strconv.ParseUint(s[0:2], 16, 8)
+		g, e2 := strconv.ParseUint(s[2:4], 16, 8)
+		b, e3 := strconv.ParseUint(s[4:6], 16, 8)
 		if e1 == nil && e2 == nil && e3 == nil {
 			return RGB{int(r), int(g), int(b)}
 		}
@@ -398,34 +409,40 @@ func configFilePath() string {
 	return ""
 }
 
-// validateExistingConfigFile ensures that if path already exists on disk, it is a valid zsplash JSON config
-// (preventing accidental overwrite or deletion of arbitrary files via ZSPLASH_CONFIG).
+// validateExistingConfigFile ensures that if path already exists on disk, it is a regular file
+// containing a single valid zsplash JSON object (preventing accidental overwrite or deletion of
+// arbitrary files, empty files, or symlinks via ZSPLASH_CONFIG).
 func validateExistingConfigFile(path string) error {
 	if path == "" {
 		return fmt.Errorf("could not resolve config path ($HOME and $ZSPLASH_CONFIG are unset)")
 	}
-	info, err := os.Stat(path)
+	info, err := os.Lstat(path)
 	if os.IsNotExist(err) {
 		return nil
 	}
 	if err != nil {
 		return err
 	}
-	if info.IsDir() || info.Size() > 64*1024 {
-		return fmt.Errorf("refusing to modify non-config path %q", path)
+	if !info.Mode().IsRegular() || info.Size() > 64*1024 {
+		return fmt.Errorf("refusing to modify non-regular or oversized path %q", path)
 	}
 	data, err := os.ReadFile(filepath.Clean(path)) // #nosec G304
 	if err != nil {
 		return err
 	}
-	if len(bytes.TrimSpace(data)) == 0 {
-		return nil
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) == 0 || trimmed[0] != '{' {
+		return fmt.Errorf("refusing to modify %q: existing file is not a valid zsplash JSON object", path)
 	}
 	var probe UserConfig
-	dec := json.NewDecoder(bytes.NewReader(data))
+	dec := json.NewDecoder(bytes.NewReader(trimmed))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&probe); err != nil {
 		return fmt.Errorf("refusing to modify %q: existing file is not a valid zsplash config", path)
+	}
+	var trailing any
+	if err := dec.Decode(&trailing); err != io.EOF {
+		return fmt.Errorf("refusing to modify %q: unexpected trailing content after JSON object", path)
 	}
 	return nil
 }
@@ -434,7 +451,7 @@ func loadUserConfig() UserConfig {
 	cfg := UserConfig{Colors: make(map[string]string)}
 	if rawPath := configFilePath(); rawPath != "" {
 		path := filepath.Clean(rawPath)
-		if info, err := os.Stat(path); err == nil && !info.IsDir() && info.Size() <= 64*1024 {
+		if info, err := os.Lstat(path); err == nil && info.Mode().IsRegular() && info.Size() <= 64*1024 {
 			if data, err := os.ReadFile(path); err == nil { // #nosec G304
 				_ = json.Unmarshal(data, &cfg)
 			}
@@ -455,14 +472,44 @@ func saveUserConfig(cfg UserConfig) error {
 		return err
 	}
 	path := filepath.Clean(rawPath)
-	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0700); err != nil {
 		return err
 	}
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0600)
+	tmpFile, err := os.CreateTemp(dir, ".zsplash-config-*.tmp")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmpFile.Name()
+	cleanup := func() {
+		_ = tmpFile.Close()
+		_ = os.Remove(tmpPath)
+	}
+	if err := tmpFile.Chmod(0600); err != nil {
+		cleanup()
+		return err
+	}
+	if _, err := tmpFile.Write(data); err != nil {
+		cleanup()
+		return err
+	}
+	if err := tmpFile.Sync(); err != nil {
+		cleanup()
+		return err
+	}
+	if err := tmpFile.Close(); err != nil {
+		_ = os.Remove(tmpPath)
+		return err
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		_ = os.Remove(tmpPath)
+		return err
+	}
+	return nil
 }
 
 func currentThemeName() string {

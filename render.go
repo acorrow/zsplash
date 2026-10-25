@@ -659,6 +659,7 @@ var spinnerStyles = map[string][]string{
 type SpinOptions struct {
 	Title, Style, Color string
 	Persist             bool
+	Stdin               bool
 	DurationMs          int
 	Command             []string
 }
@@ -668,6 +669,28 @@ func openTTYWriter(fallback io.Writer) (io.Writer, func()) {
 		return tty, func() { _ = tty.Close() }
 	}
 	return fallback, func() {}
+}
+
+func signalExitCode(sig os.Signal) int {
+	if s, ok := sig.(syscall.Signal); ok && int(s) > 0 {
+		return 128 + int(s)
+	}
+	if sig == syscall.SIGTERM {
+		return 143
+	}
+	return 130
+}
+
+func exitCodeFromError(err error) int {
+	if exitErr, ok := err.(*exec.ExitError); ok {
+		if ws, ok := exitErr.Sys().(syscall.WaitStatus); ok && ws.Signaled() {
+			return 128 + int(ws.Signal())
+		}
+		if code := exitErr.ExitCode(); code > 0 {
+			return code
+		}
+	}
+	return 1
 }
 
 func runSpinner(stdout, stderr io.Writer, opts SpinOptions) int {
@@ -692,6 +715,10 @@ func runSpinner(stdout, stderr io.Writer, opts SpinOptions) int {
 		title = "Working..."
 	}
 
+	sigCh := make(chan os.Signal, 2)
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(sigCh)
+
 	start := time.Now()
 	doneCh := make(chan error, 1)
 	var cmd *exec.Cmd
@@ -700,7 +727,9 @@ func runSpinner(stdout, stderr io.Writer, opts SpinOptions) int {
 		cmd = exec.Command(opts.Command[0], opts.Command[1:]...) // #nosec G204
 		cmd.Stdout = stdout
 		cmd.Stderr = stderr
-		cmd.Stdin = os.Stdin
+		if opts.Stdin {
+			cmd.Stdin = os.Stdin
+		}
 		if err := cmd.Start(); err != nil {
 			renderPillBadge(ttyOut, "FAIL", pal.Fail, title, err.Error())
 			return 1
@@ -717,10 +746,6 @@ func runSpinner(stdout, stderr io.Writer, opts SpinOptions) int {
 		}()
 	}
 
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
-	defer signal.Stop(sigCh)
-
 	if !noColorEnabled() {
 		fmt.Fprint(ttyOut, "\033[?25l")
 	}
@@ -735,31 +760,63 @@ func runSpinner(stdout, stderr io.Writer, opts SpinOptions) int {
 	ticker := time.NewTicker(80 * time.Millisecond)
 	defer ticker.Stop()
 	frameIdx := 0
+	sigCount := 0
+	var lastSig os.Signal
+	var killTimer <-chan time.Time
+
 	for {
 		select {
-		case <-sigCh:
-			if cmd != nil && cmd.Process != nil {
-				_ = cmd.Process.Signal(syscall.SIGTERM)
-				select {
-				case <-doneCh:
-				case <-time.After(150 * time.Millisecond):
-					_ = cmd.Process.Kill()
+		case sig := <-sigCh:
+			if cmd == nil || cmd.Process == nil {
+				restoreTerminal()
+				renderPillBadge(ttyOut, "INT", pal.Warn, title, "interrupted")
+				return signalExitCode(sig)
+			}
+			sigCount++
+			lastSig = sig
+			if sigCount == 1 {
+				if sig == syscall.SIGTERM {
+					_ = cmd.Process.Signal(syscall.SIGTERM)
+					killTimer = time.After(5 * time.Second)
 				}
+				// On first SIGINT, the terminal process group already delivered SIGINT to the child;
+				// wait for the child to finish its own cleanup unless a second Ctrl-C arrives.
+				continue
+			}
+			_ = cmd.Process.Kill()
+			select {
+			case <-doneCh:
+			case <-time.After(100 * time.Millisecond):
 			}
 			restoreTerminal()
 			renderPillBadge(ttyOut, "INT", pal.Warn, title, "interrupted")
-			return 130
+			return signalExitCode(sig)
+		case <-killTimer:
+			if cmd != nil && cmd.Process != nil {
+				_ = cmd.Process.Kill()
+				select {
+				case <-doneCh:
+				case <-time.After(100 * time.Millisecond):
+				}
+			}
+			restoreTerminal()
+			renderPillBadge(ttyOut, "INT", pal.Warn, title, "terminated")
+			return signalExitCode(lastSig)
 		case err := <-doneCh:
 			restoreTerminal()
 			elapsed := formatDuration(time.Since(start))
-			if err != nil {
-				renderPillBadge(ttyOut, "FAIL", pal.Fail, title, elapsed)
-				if exitErr, ok := err.(*exec.ExitError); ok {
-					if code := exitErr.ExitCode(); code > 0 {
+			if sigCount > 0 {
+				renderPillBadge(ttyOut, "INT", pal.Warn, title, "interrupted")
+				if err != nil {
+					if code := exitCodeFromError(err); code > 1 {
 						return code
 					}
 				}
-				return 1
+				return signalExitCode(lastSig)
+			}
+			if err != nil {
+				renderPillBadge(ttyOut, "FAIL", pal.Fail, title, elapsed)
+				return exitCodeFromError(err)
 			}
 			if opts.Persist {
 				renderPillBadge(ttyOut, "PASS", pal.Pass, title, elapsed)

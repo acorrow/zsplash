@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -280,45 +281,84 @@ func TestDocsAndSchemaAndSubcommandHelp(t *testing.T) {
 }
 
 func TestSecurityHardening(t *testing.T) {
-	// 1. Escape sequence and control character sanitization (OSC 52, CSI, CR, NUL, DEL, C1)
-	hostile := "safe\x1b]52;c;ZWNobyBoYWNrZWQ=\x07\x1b[2J\r\x00\x7f\u009btext"
+	// 1. Escape sequence, C0/DEL/C1, and Unicode bidi/format character sanitization (keeping U+200D ZWJ)
+	hostile := "safe\x1b]52;c;ZWNobyBoYWNrZWQ=\x07\x1b[2J\r\x00\x7f\u009b\u202e\u2066\u200b\ufefftext"
 	var buf bytes.Buffer
 	run([]string{"ok", hostile, "--meta", "\x1b]0;pwn\x0742ms"}, &buf)
 	out := buf.String()
-	if strings.Contains(out, "\x1b]52;") || strings.Contains(out, "\x1b[2J") || strings.Contains(out, "\x1b]0;") || strings.Contains(out, "\x00") || strings.Contains(out, "\x7f") {
-		t.Fatalf("expected hostile OSC/CSI/C0 sequences to be stripped from output, got: %q", out)
+	for _, forbidden := range []string{"\x1b]52;", "\x1b[2J", "\x1b]0;", "\x00", "\x7f", "\u202e", "\u2066", "\u200b", "\ufeff"} {
+		if strings.Contains(out, forbidden) {
+			t.Fatalf("expected hostile sequence %q to be stripped from output, got: %q", forbidden, out)
+		}
 	}
 	if !strings.Contains(stripANSI(out), "safetext") {
 		t.Fatalf("expected sanitized text 'safetext' in output, got: %q", stripANSI(out))
 	}
+	if got := sanitizeText("a\u200db", false); got != "a\u200db" {
+		t.Fatalf("expected ZWJ U+200D to be preserved, got: %q", got)
+	}
 
 	// Verify truncateVisible strips escapes even when string is shorter than maxRunes
-	shortHostile := "hi\x1b]52;c;abc\x07"
+	shortHostile := "hi\x1b]52;c;abc\x07\u202e"
 	if got := truncateVisible(shortHostile, 50); got != "hi" {
 		t.Fatalf("expected truncateVisible to strip escapes on short string, got: %q", got)
 	}
 
-	// 2. ZSPLASH_CONFIG refuses to delete or overwrite a non-config file (e.g. .zshrc)
-	fakeZshrc := filepath.Join(t.TempDir(), ".zshrc")
-	if err := os.WriteFile(fakeZshrc, []byte("export PATH=/usr/bin:$PATH\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("ZSPLASH_CONFIG", fakeZshrc)
+	// 2. --raw cannot be smuggled after the subcommand, and visibleLen ignores ANSI in --raw mode
 	buf.Reset()
-	code := runWithExit([]string{"config", "reset"}, &buf, &buf)
-	if code == 0 {
-		t.Fatalf("expected non-zero exit when resetting a non-config file")
-	}
-	if _, err := os.Stat(fakeZshrc); err != nil {
-		t.Fatalf("expected non-config file %q to NOT be deleted: %v", fakeZshrc, err)
+	run([]string{"kv", "--raw", "val\x1b]52;c;pwn\x07"}, &buf)
+	if strings.Contains(buf.String(), "\x1b]52;") {
+		t.Fatalf("expected --raw after subcommand NOT to disable sanitization, got: %q", buf.String())
 	}
 	buf.Reset()
-	code = runWithExit([]string{"config", "set", "theme", "nes"}, &buf, &buf)
-	if code == 0 {
-		t.Fatalf("expected non-zero exit when overwriting a non-config file")
+	run([]string{"--raw", "ok", "\x1b[32mcustom\x1b[0m"}, &buf)
+	if !strings.Contains(buf.String(), "\x1b[32mcustom\x1b[0m") {
+		t.Fatalf("expected leading --raw before subcommand to preserve ANSI, got: %q", buf.String())
+	}
+	if got := visibleLen("\x1b[32mhello\x1b[0m"); got != 5 {
+		t.Fatalf("expected visibleLen to return 5 for ANSI-styled 'hello', got %d", got)
 	}
 
-	// 3. Extreme widths are safely clamped
+	// 3. ZSPLASH_CONFIG refuses non-config files, empty files, 'null', and trailing garbage
+	for name, content := range map[string]string{
+		".zshrc":   "export PATH=/usr/bin:$PATH\n",
+		"empty":    "   \n",
+		"nulljson": "null\n",
+		"trailing": "{}\nnot-json\n",
+	} {
+		target := filepath.Join(t.TempDir(), name)
+		if err := os.WriteFile(target, []byte(content), 0600); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("ZSPLASH_CONFIG", target)
+		buf.Reset()
+		if code := runWithExit([]string{"config", "reset"}, &buf, &buf); code == 0 {
+			t.Fatalf("case %q: expected non-zero exit when resetting invalid config file", name)
+		}
+		if _, err := os.Stat(target); err != nil {
+			t.Fatalf("case %q: expected file %q to NOT be deleted: %v", name, target, err)
+		}
+		buf.Reset()
+		if code := runWithExit([]string{"config", "set", "theme", "nes"}, &buf, &buf); code == 0 {
+			t.Fatalf("case %q: expected non-zero exit when overwriting invalid config file", name)
+		}
+	}
+
+	// 4. Negative hex colors are rejected cleanly
+	fallback := RGB{10, 20, 30}
+	if got := parseLiteralColor("#-1-1-1", fallback); got != fallback {
+		t.Fatalf("expected negative hex color #-1-1-1 to be rejected, got: %+v", got)
+	}
+
+	// 5. Signal exit codes follow 128 + signal convention
+	if got := signalExitCode(os.Interrupt); got != 130 {
+		t.Fatalf("expected SIGINT exit code 130, got %d", got)
+	}
+	if got := signalExitCode(syscall.SIGTERM); got != 143 {
+		t.Fatalf("expected SIGTERM exit code 143, got %d", got)
+	}
+
+	// 6. Extreme widths are safely clamped
 	t.Setenv("ZSPLASH_WIDTH", "2000000000")
 	buf.Reset()
 	run([]string{"bar", "5", "10", "Test", "--width", "2000000000"}, &buf)

@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-var version = "0.6.0"
+var version = "0.6.1"
 
 func main() {
 	code := runWithExit(os.Args[1:], os.Stdout, os.Stderr)
@@ -22,9 +22,11 @@ func run(args []string, out io.Writer) {
 }
 
 // extractGlobalThemeFlag strips --theme <name> from args and sets cliThemeOverride.
+// --raw is only accepted before the subcommand (or via ZSPLASH_RAW=1) so untrusted positional
+// arguments after the subcommand cannot smuggle --raw to disable sanitization.
 func extractGlobalThemeFlag(args []string) []string {
 	cliThemeOverride = ""
-	rawOutputEnabled = false
+	rawOutputEnabled = strings.TrimSpace(os.Getenv("ZSPLASH_RAW")) == "1"
 	var filtered []string
 	for i := 0; i < len(args); i++ {
 		a := args[i]
@@ -32,7 +34,7 @@ func extractGlobalThemeFlag(args []string) []string {
 			filtered = append(filtered, args[i:]...)
 			break
 		}
-		if a == "--raw" {
+		if a == "--raw" && len(filtered) == 0 {
 			rawOutputEnabled = true
 			continue
 		}
@@ -522,6 +524,8 @@ func parseSpinFlags(args []string) SpinOptions {
 			i++
 		case a == "--persist" || a == "-p":
 			opts.Persist = true
+		case a == "--stdin":
+			opts.Stdin = true
 		case (a == "--duration" || a == "-d") && i+1 < len(args):
 			opts.DurationMs, _ = strconv.Atoi(args[i+1])
 			i++

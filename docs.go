@@ -119,14 +119,15 @@ func buildCLISpec() CLISpec {
 		Summary: "Fast, reactive CLI utility for Zsh and shell scripts to render colorful banners, boxes, status badges, phase headers, key-value cards, command previews, spinners, and progress bars.",
 		GlobalFlags: []FlagSpec{
 			flg("-T", "--theme", "<theme>", themeOrder, "modern", "theme", "Temporarily apply a built-in color palette for this command."),
-			flg("", "--raw", "", nil, "false", "", "Allow raw control characters and escape sequences in user-supplied text without sanitization."),
+			flg("", "--raw", "", nil, "false", "", "Must precede the subcommand (`zsp --raw <cmd> ...`): allow raw escape sequences in user text."),
 			flg("-h", "--help", "", nil, "", "", "Show overview help or subcommand spec (`zsp <cmd> --help`)."),
 			flg("-v", "--version", "", nil, "", "", "Print version string and exit."),
 		},
 		EnvVars: []EnvVarSpec{
 			{"ZSPLASH_THEME", "", "Override active color palette for the current shell session."},
 			{"ZSPLASH_CONFIG", "~/.config/zsplash/config.json", "Custom path for reading and writing persistent user configuration."},
-			{"ZSPLASH_WIDTH", "auto (/dev/tty -> $COLUMNS -> 80)", "Force a specific terminal column width (integer >= 20)."},
+			{"ZSPLASH_WIDTH", "auto (/dev/tty -> $COLUMNS -> 80)", "Force a specific terminal column width (integer 20..500)."},
+			{"ZSPLASH_RAW", "0", "Set to `1` to bypass escape sanitization without passing `--raw`."},
 			{"NO_COLOR", "", "Disable all ANSI color escapes and use bracket badges (`[PASS]`, `[WARN]`, `[FAIL]`, `[INFO]`)."},
 		},
 		SemanticRoles: []string{"primary", "secondary", "pass", "warn", "fail", "info", "muted", "text"},
@@ -293,9 +294,9 @@ func buildCommandSpecs(grads []string) []CommandSpec {
 		{
 			Name: "spin", Category: "Async & Progress",
 			Summary:  "Animate a live spinner on `/dev/tty` while running a child command, keeping `stdout` untouched for `$(...)` capture.",
-			Synopsis: "zsp spin <title> [--style dots|pulse|meter|line] [--color <c>] [--persist] [--duration <ms>] [-- <command> [args...]]",
-			Stream:   "Animation writes to `/dev/tty` (fallback: `stderr`). Child `stdout` and `stderr` pass through untouched.",
-			ExitCode: "Propagates exact exit code of `<command>` (`130` on `SIGINT`).",
+			Synopsis: "zsp spin <title> [--style dots|pulse|meter|line] [--color <c>] [--persist] [--stdin] [--duration <ms>] [-- <command> [args...]]",
+			Stream:   "Animation writes to `/dev/tty` (fallback: `stderr`). Child `stdout` and `stderr` pass through untouched; child `stdin` defaults to `/dev/null` unless `--stdin` is set.",
+			ExitCode: "Propagates exact exit code of `<command>` (`128 + signal` when terminated by a signal: `130` on `SIGINT`, `143` on `SIGTERM`).",
 			Positionals: []ArgSpec{
 				{Name: "title", Required: true, Description: "Spinner label."},
 				{Name: "-- <command> [args...]", Required: false, Description: "Child command executed while spinning."},
@@ -304,6 +305,7 @@ func buildCommandSpecs(grads []string) []CommandSpec {
 				flg("-s", "--style", "<style>", []string{"dots", "pulse", "meter", "line"}, "dots", "spin.style", "Spinner animation frames."),
 				flg("-c", "--color", "<color>", nil, "primary", "spin.color", "Spinner glyph color."),
 				flg("-p", "--persist", "", nil, "false", "", "Print final `PASS`/`FAIL` badge with elapsed time on `/dev/tty`."),
+				flg("", "--stdin", "", nil, "false", "", "Pass parent `stdin` through to the child command instead of `/dev/null`."),
 				flg("-d", "--duration", "<ms>", nil, "600", "", "Timed spin duration in ms when no `-- <command>` is given."),
 			},
 			Rules: []string{

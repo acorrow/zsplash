@@ -1,0 +1,16 @@
+# Binaries & build output
+zsplash
+zsp
+*.exe
+*.out
+dist/
+bin/
+target/
+artifacts/
+
+# OS & Editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp

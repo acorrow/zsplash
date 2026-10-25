@@ -625,3 +625,117 @@ func TestSpinPipedInputAndConfigSymlinks(t *testing.T) {
 		}
 	})
 }
+
+func TestTSVTable(t *testing.T) {
+	t.Setenv("ZSPLASH_WIDTH", "80")
+
+	// 1. Default mode: all rows treated as data, numeric columns right-aligned, exact column alignment
+	var buf bytes.Buffer
+	run([]string{"tsv", `api-gateway\thealthy\t120ms`, `worker\tready\t4ms`}, &buf)
+	plain := strings.TrimSpace(stripANSI(buf.String()))
+	lines := strings.Split(plain, "\n")
+	if len(lines) != 4 {
+		t.Fatalf("expected 4 lines (top, 2 data rows, bottom) without --header, got %d:\n%s", len(lines), plain)
+	}
+	if strings.Contains(plain, "├") {
+		t.Fatalf("expected no header separator rule without --header, got:\n%s", plain)
+	}
+	wantWidth := visibleLen(lines[0])
+	for i, l := range lines {
+		if visibleLen(l) != wantWidth {
+			t.Fatalf("line %d width mismatch: expected %d, got %d (%q)", i, wantWidth, visibleLen(l), l)
+		}
+	}
+	// Verify "4ms" is right-aligned with leading spaces to match "120ms"
+	if !strings.Contains(lines[2], "│   4ms │") {
+		t.Fatalf("expected numeric column '4ms' to be right-aligned to match '120ms', got: %q", lines[2])
+	}
+
+	// 2. --header (-H) mode and column divider vertical alignment across top, mid, data, and bottom
+	buf.Reset()
+	run([]string{"table", "--header", `SERVICE\tSTATUS\tCOUNT`, `api\thealthy\t1,024`, `worker\tready\t7`}, &buf)
+	hdrPlain := strings.TrimSpace(stripANSI(buf.String()))
+	hdrLines := strings.Split(hdrPlain, "\n")
+	if len(hdrLines) != 6 {
+		t.Fatalf("expected 6 lines with --header, got %d:\n%s", len(hdrLines), hdrPlain)
+	}
+	if !strings.HasPrefix(hdrLines[2], "├") || !strings.Contains(hdrLines[2], "┼") {
+		t.Fatalf("expected header separator line with ├ and ┼ on line 2, got: %q", hdrLines[2])
+	}
+	// Verify every column divider index in top (┬), mid (┼), bottom (┴), and data (│) lines up at the exact rune column
+	dividerIndices := func(s string, chars string) []int {
+		var idx []int
+		for i, r := range []rune(s) {
+			if strings.ContainsRune(chars, r) {
+				idx = append(idx, i)
+			}
+		}
+		return idx
+	}
+	topDivs := dividerIndices(hdrLines[0], "╭┬╮")
+	midDivs := dividerIndices(hdrLines[2], "├┼┤")
+	rowDivs := dividerIndices(hdrLines[3], "│")
+	botDivs := dividerIndices(hdrLines[5], "╰┴╯")
+	for i := range topDivs {
+		if topDivs[i] != midDivs[i] || topDivs[i] != rowDivs[i] || topDivs[i] != botDivs[i] {
+			t.Fatalf("column divider %d misaligned: top=%v mid=%v row=%v bot=%v\n%s", i, topDivs, midDivs, rowDivs, botDivs, hdrPlain)
+		}
+	}
+
+	// 3.Narrow terminal proportional shrinking: shrinks widest column with "…" while keeping short columns intact
+	t.Setenv("ZSPLASH_WIDTH", "38")
+	buf.Reset()
+	run([]string{"tsv", "--header",
+		`ID\tMS\tDESCRIPTION`,
+		`1\t4ms\tThis is a very long description cell that must be truncated cleanly`,
+		`2\t12ms\tAnother long row description that fits inside the narrow terminal`,
+	}, &buf)
+	narrowPlain := strings.TrimSpace(stripANSI(buf.String()))
+	for i, l := range strings.Split(narrowPlain, "\n") {
+		if visibleLen(l) > 36 {
+			t.Fatalf("expected narrow table line %d to fit within 36 cols (ZSPLASH_WIDTH-2), got %d: %q", i, visibleLen(l), l)
+		}
+	}
+	if !strings.Contains(narrowPlain, "…") || !strings.Contains(narrowPlain, "12ms") {
+		t.Fatalf("expected narrow table to truncate long description with '…' while keeping short '12ms' column intact, got:\n%s", narrowPlain)
+	}
+
+	// 4. --no-truncate preserves full cell width even when wider than ZSPLASH_WIDTH
+	buf.Reset()
+	run([]string{"tsv", "--no-truncate", `1\tThis full text must not be truncated even in a narrow terminal`}, &buf)
+	if strings.Contains(stripANSI(buf.String()), "…") {
+		t.Fatalf("expected --no-truncate to preserve full cell text without '…', got:\n%s", stripANSI(buf.String()))
+	}
+
+	// 5. Piped stdin, ragged rows, --headers, and --compact mode
+	t.Setenv("ZSPLASH_WIDTH", "80")
+	buf.Reset()
+	in := strings.NewReader("alpha\t10\r\nbeta\t200\textra\r\n")
+	if code := runTable(in, &buf, &buf, TableOptions{Headers: "NAME,SCORE,NOTES", Compact: true}); code != 0 {
+		t.Fatalf("expected runTable from reader to exit 0, got %d", code)
+	}
+	compactPlain := strings.TrimSpace(stripANSI(buf.String()))
+	if strings.Contains(compactPlain, "╭") || !strings.Contains(compactPlain, "────") || !strings.Contains(compactPlain, "extra") {
+		t.Fatalf("expected compact table with header underline and ragged column padded, got:\n%s", compactPlain)
+	}
+
+	// 6. --file input and "--" end-of-flags
+	tsvFile := filepath.Join(t.TempDir(), "sample.tsv")
+	if err := os.WriteFile(tsvFile, []byte("k1\tv1\nk2\tv2\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	buf.Reset()
+	if code := runWithExit([]string{"tsv", "--file", tsvFile, "--title", "Data File"}, &buf, &buf); code != 0 {
+		t.Fatalf("expected tsv --file to exit 0, got %d", code)
+	}
+	filePlain := strings.TrimSpace(stripANSI(buf.String()))
+	if !strings.Contains(filePlain, "Data File") || !strings.Contains(filePlain, "k2") {
+		t.Fatalf("expected titled table from --file, got:\n%s", filePlain)
+	}
+
+	buf.Reset()
+	run([]string{"tsv", "--", `--header\tliteral`}, &buf)
+	if !strings.Contains(stripANSI(buf.String()), "--header") {
+		t.Fatalf("expected '--header' after '--' to be rendered as cell text, got:\n%s", stripANSI(buf.String()))
+	}
+}

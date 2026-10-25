@@ -28,10 +28,12 @@ zsp info "Workers ready"     --meta "8 threads"
 zsp warn "Rate limit 85%"    --meta "throttling"
 zsp err  "Webhook timed out" --meta "exit 1"
 
-# Layout, cards, trees, and code blocks
+# Layout, cards, tables, trees, and code blocks
 zsp step 1 3 "Migrating database"
 zsp box "All migrations applied" --title "DB" --border double
 zsp kv --title "Target" "Env" "prod" "Branch" "main"
+zsp tsv --header "SERVICE\tSTATUS\tLATENCY" "api\thealthy\t12ms" "worker\tready\t4ms"
+printf "api\thealthy\t12ms\nworker\tready\t4ms\n" | zsp tsv --headers "SERVICE,STATUS,LATENCY"
 zsp tree --title "Checks" "Auth valid" "Cluster reachable"
 zsp cmd "docker build -t app:latest ."
 
@@ -55,6 +57,7 @@ find . -type f | zsp progress --total 100 --title "Indexing"
 | `step` | `zsp step <curr> <total> <title>` | `-c, --color <color>`<br>`-g, --gradient <grad>` | Full-width phase divider (`━━━ [curr/total] ━━━`) and `▸ <title>` header |
 | `rule` (`hr`) | `zsp rule [label] [flags]` | `-c, --color <color>`<br>`-g, --gradient <grad>`<br>`-w, --width <cols>` | Horizontal divider line (`───`) with optional centered label |
 | `kv` (`card`) | `zsp kv [flags] <k1> <v1> [<k2> <v2> ...]` | `-t, --title <t>`<br>`-c, --color <color>`<br>`-g, --gradient <grad>` | Framed key-value card with aligned dot-leaders |
+| `tsv` (`table`) | `zsp tsv [flags] [rows...]`<br>`<cmd> \| zsp tsv [flags]` | `-H, --header`<br>`--headers <cols>`<br>`-f, --file <path>`<br>`-d, --delim <sep>`<br>`-a, --align <spec>`<br>`--compact` `--no-truncate`<br>`-t, --title <t>` `-b, --border <b>`<br>`-c, --color <c>` `-g, --gradient <g>`<br>`-w, --width <cols>` | Aligned TSV table from `stdin`, file, or args with auto right-aligned numeric columns and proportional narrow-terminal truncation |
 | `tree` (`list`) | `zsp tree [flags] <item1> [<item2> ...]` | `-t, --title <t>`<br>`-c, --color <color>` | Unicode checklist (`├─ ●`, `╰─ ●`) with optional root header |
 | `cmd` | `zsp cmd <shell command>` | (none) | Shell command preview with colored gutter (`┃ ▸`) and syntax highlighting |
 | `code` | `zsp code [flags] <line1> [<line2> ...]` | `-t, --title <t>` | Framed multi-line Zsh code block (`╭─ title ───╮`) |

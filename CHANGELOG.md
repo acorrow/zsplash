@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.7.0 (2026-10-25)
+
+- `tsv`, `table`: added `zsp tsv` (alias `zsp table`) to render aligned tabular TSV data from piped `stdin`, `--file <path>` (`-f`), or inline positional row arguments (`\t` and `\n` escapes expanded automatically).
+  - Treats all rows as data by default; supports `--header` (`-H`) to style the first row as a header with a horizontal separator rule (`├...┼...┤`) or `--headers "A,B,C"` to supply custom headers.
+  - Automatically right-aligns numeric columns (integers, decimals, comma-grouped numbers, percentages, currency, and sizes/durations such as `12ms` or `512MB`), with `--align` (`-a`) to override alignment globally or per column (`left,center,right`).
+  - Proportionally shrinks and truncates the widest columns first with `…` in narrow terminals so tables never wrap or break vertical column alignment (`--no-truncate` disables truncation).
+  - Supports `--border rounded|double|heavy|ascii|none` (`-b`), `--compact` (borderless space-padded columns), `--title <t>` (`-t`), `--delim <sep>` (`-d`), `--color <c>` (`-c`), `--gradient <g>` (`-g`), and `--width <cols>` (`-w`).
+- `README.md`: added a CLI cheat sheet covering all subcommands, global flags, environment variables, color roles, gradients, and config keys.
+
 ## v0.6.9 (2026-10-25)
 
 - `docs`: clarified in `README.md`, `zsp help spin`, `zsp docs`, and `CHANGELOG.md` that Linux `Pdeathsig` (`SIGKILL`) only covers some cases when `zsp` is `SIGKILL`ed:

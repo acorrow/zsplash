@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-var version = "0.6.9"
+var version = "0.7.0"
 
 func main() {
 	code := runWithExit(os.Args[1:], os.Stdout, os.Stderr)
@@ -163,6 +163,10 @@ func runWithExit(rawArgs []string, out io.Writer, errOut io.Writer) int {
 		title, colorSpec, gradSpec, pairs := parseKVFlags(rest)
 		renderKV(out, title, colorSpec, gradSpec, pairs)
 		return 0
+
+	case "tsv", "table":
+		opts := parseTableFlags(rest)
+		return runTable(os.Stdin, out, errOut, opts)
 
 	case "cmd":
 		renderCmd(out, strings.Join(rest, " "))
@@ -500,6 +504,107 @@ func parseKVFlags(args []string) (string, string, string, []string) {
 	return title, colorSpec, gradSpec, pairs
 }
 
+func parseTableFlags(args []string) TableOptions {
+	var opts TableOptions
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if a == "--" {
+			opts.Rows = append(opts.Rows, args[i+1:]...)
+			break
+		}
+		switch {
+		case a == "--header" || a == "-H":
+			opts.Header = true
+		case a == "--headers":
+			if hasValueArg(args, i) {
+				opts.Headers = args[i+1]
+				i++
+			}
+		case strings.HasPrefix(a, "--headers="):
+			opts.Headers = strings.TrimPrefix(a, "--headers=")
+		case a == "--file" || a == "-f":
+			if hasValueArg(args, i) {
+				opts.File = args[i+1]
+				i++
+			}
+		case strings.HasPrefix(a, "--file="):
+			opts.File = strings.TrimPrefix(a, "--file=")
+		case strings.HasPrefix(a, "-f="):
+			opts.File = strings.TrimPrefix(a, "-f=")
+		case a == "--delim" || a == "-d":
+			if hasValueArg(args, i) {
+				opts.Delim = args[i+1]
+				i++
+			}
+		case strings.HasPrefix(a, "--delim="):
+			opts.Delim = strings.TrimPrefix(a, "--delim=")
+		case strings.HasPrefix(a, "-d="):
+			opts.Delim = strings.TrimPrefix(a, "-d=")
+		case a == "--align" || a == "-a":
+			if hasValueArg(args, i) {
+				opts.Align = args[i+1]
+				i++
+			}
+		case strings.HasPrefix(a, "--align="):
+			opts.Align = strings.TrimPrefix(a, "--align=")
+		case strings.HasPrefix(a, "-a="):
+			opts.Align = strings.TrimPrefix(a, "-a=")
+		case a == "--compact":
+			opts.Compact = true
+		case a == "--no-truncate":
+			opts.NoTruncate = true
+		case a == "--title" || a == "-t":
+			if hasValueArg(args, i) {
+				opts.Title = args[i+1]
+				i++
+			}
+		case strings.HasPrefix(a, "--title="):
+			opts.Title = strings.TrimPrefix(a, "--title=")
+		case strings.HasPrefix(a, "-t="):
+			opts.Title = strings.TrimPrefix(a, "-t=")
+		case a == "--border" || a == "-b":
+			if hasValueArg(args, i) {
+				opts.Border = args[i+1]
+				i++
+			}
+		case strings.HasPrefix(a, "--border="):
+			opts.Border = strings.TrimPrefix(a, "--border=")
+		case strings.HasPrefix(a, "-b="):
+			opts.Border = strings.TrimPrefix(a, "-b=")
+		case a == "--color" || a == "-c":
+			if hasValueArg(args, i) {
+				opts.Color = args[i+1]
+				i++
+			}
+		case strings.HasPrefix(a, "--color="):
+			opts.Color = strings.TrimPrefix(a, "--color=")
+		case strings.HasPrefix(a, "-c="):
+			opts.Color = strings.TrimPrefix(a, "-c=")
+		case a == "--gradient" || a == "-g":
+			if hasValueArg(args, i) {
+				opts.Gradient = args[i+1]
+				i++
+			}
+		case strings.HasPrefix(a, "--gradient="):
+			opts.Gradient = strings.TrimPrefix(a, "--gradient=")
+		case strings.HasPrefix(a, "-g="):
+			opts.Gradient = strings.TrimPrefix(a, "-g=")
+		case a == "--width" || a == "-w":
+			if hasValueArg(args, i) {
+				opts.Width, _ = strconv.Atoi(args[i+1])
+				i++
+			}
+		case strings.HasPrefix(a, "--width="):
+			opts.Width, _ = strconv.Atoi(strings.TrimPrefix(a, "--width="))
+		case strings.HasPrefix(a, "-w="):
+			opts.Width, _ = strconv.Atoi(strings.TrimPrefix(a, "-w="))
+		default:
+			opts.Rows = append(opts.Rows, a)
+		}
+	}
+	return opts
+}
+
 func parseTreeFlags(args []string) (string, string, []string) {
 	var title, colorSpec string
 	var items []string
@@ -808,6 +913,15 @@ func renderDemo(out io.Writer) {
 		"Terminal Width", fmt.Sprintf("%d cols", detectTermWidth()),
 	})
 	fmt.Fprintln(out)
+	renderTable(out, TableOptions{
+		Header: true,
+		Rows: []string{
+			"SERVICE\tSTATUS\tLATENCY",
+			"api-gateway\thealthy\t12ms",
+			"worker-pool\tready\t4ms",
+		},
+	})
+	fmt.Fprintln(out)
 	renderTree(out, "Preflight Checks", []string{"Config valid", "Migrations clean"}, "")
 	fmt.Fprintln(out)
 	renderCmd(out, "docker build --tag app:latest .")
@@ -817,6 +931,7 @@ func renderDemo(out io.Writer) {
 		`zsp box "Deployment complete" --title "Prod" --border double`,
 		`zsp rule "SUMMARY" --color secondary`,
 		`zsp kv --title "Release Target" "Binary" "zsplash (zsp)" "Active Theme" "` + currentThemeName() + `"`,
+		`zsp tsv --header "SERVICE\tSTATUS\tLATENCY" "api-gateway\thealthy\t12ms"`,
 		`zsp tree --title "Preflight Checks" "Config valid" "Migrations clean"`,
 		`zsp cmd "docker build --tag app:latest ."`,
 	})
@@ -874,6 +989,7 @@ func printHelp(out io.Writer) {
 	fmt.Fprintln(out, "  zsp step <curr> <total> <title> [--color <c>]")
 	fmt.Fprintln(out, "  zsp rule [label] [--color <c>]")
 	fmt.Fprintln(out, "  zsp kv [--title <t>] <key1> <val1> [<key2> <val2> ...]")
+	fmt.Fprintln(out, "  zsp tsv|table [--header] [--headers <cols>] [--file <f>] [--compact] [rows...]")
 	fmt.Fprintln(out, "  zsp cmd <shell command>")
 	fmt.Fprintln(out, "  zsp code [--title <t>] <line1> <line2> ...")
 	fmt.Fprintln(out, "  zsp tree [--title <t>] <item1> <item2> ...")

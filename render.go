@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"syscall"
@@ -238,13 +239,17 @@ func buildFontRows(text, font string) []string {
 	}
 }
 
-type BorderGlyphs struct{ TopLeft, TopRight, BottomLeft, BottomRight, Horizontal, Vertical, LeftTee, RightTee string }
+type BorderGlyphs struct {
+	TopLeft, TopRight, BottomLeft, BottomRight  string
+	Horizontal, Vertical                        string
+	LeftTee, RightTee, TopTee, BottomTee, Cross string
+}
 
 var borderStyles = map[string]BorderGlyphs{
-	"rounded": {"╭", "╮", "╰", "╯", "─", "│", "├", "┤"},
-	"double":  {"╔", "╗", "╚", "╝", "═", "║", "╠", "╣"},
-	"heavy":   {"┏", "┓", "┗", "┛", "━", "┃", "┣", "┫"},
-	"ascii":   {"+", "+", "+", "+", "-", "|", "+", "+"},
+	"rounded": {"╭", "╮", "╰", "╯", "─", "│", "├", "┤", "┬", "┴", "┼"},
+	"double":  {"╔", "╗", "╚", "╝", "═", "║", "╠", "╣", "╦", "╩", "╬"},
+	"heavy":   {"┏", "┓", "┗", "┛", "━", "┃", "┣", "┫", "┳", "┻", "╋"},
+	"ascii":   {"+", "+", "+", "+", "-", "|", "+", "+", "+", "+", "+"},
 }
 
 type BoxOptions struct {
@@ -508,6 +513,482 @@ func renderKV(out io.Writer, title, colorSpec, gradSpec string, pairs []string) 
 			c.fgANSI(), it.k, ansiReset(), ansiDim(), strings.Repeat(".", dots), ansiReset(), ansiBold()+pal.Text.fgANSI(), it.v, ansiReset()))
 	}
 	renderBox(out, BoxOptions{Text: strings.Join(formattedLines, "\n"), Title: title, Border: activeConfig.BoxBorder, Color: colorSpec, Gradient: gradSpec, preformatted: true})
+}
+
+type TableOptions struct {
+	Title, Headers, File, Delim, Align, Border, Color, Gradient string
+	Width                                                       int
+	Header, Compact, NoTruncate                                 bool
+	Rows                                                        []string
+}
+
+var numericUnitSuffixes = []string{
+	"kib", "mib", "gib", "tib",
+	"kb", "mb", "gb", "tb",
+	"ns", "us", "µs", "ms",
+	"%", "s", "b", "k", "m", "g",
+}
+
+func isNumericCell(s string) bool {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return false
+	}
+	if s[0] == '+' || s[0] == '-' {
+		s = strings.TrimSpace(s[1:])
+	}
+	if strings.HasPrefix(s, "$") {
+		s = strings.TrimSpace(s[1:])
+	}
+	lower := strings.ToLower(s)
+	for _, suf := range numericUnitSuffixes {
+		if strings.HasSuffix(lower, suf) && len(s) > len(suf) {
+			s = strings.TrimSpace(s[:len(s)-len(suf)])
+			break
+		}
+	}
+	if s == "" {
+		return false
+	}
+	digits, dots := 0, 0
+	for _, r := range s {
+		switch {
+		case r >= '0' && r <= '9':
+			digits++
+		case r == ',':
+			continue
+		case r == '.':
+			dots++
+			if dots > 1 {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+	return digits > 0
+}
+
+func isNumericColumn(rows [][]string, col int) bool {
+	if len(rows) == 0 {
+		return false
+	}
+	checkRange := func(start int) bool {
+		nonEmpty := 0
+		for i := start; i < len(rows); i++ {
+			if col >= len(rows[i]) {
+				continue
+			}
+			val := strings.TrimSpace(rows[i][col])
+			if val == "" {
+				continue
+			}
+			if !isNumericCell(val) {
+				return false
+			}
+			nonEmpty++
+		}
+		return nonEmpty > 0
+	}
+	if checkRange(0) {
+		return true
+	}
+	// If the first row is an unflagged header label and all remaining rows are numeric,
+	// still right-align the column so headerless TSV pipelines align cleanly.
+	if len(rows) >= 2 && checkRange(1) {
+		return true
+	}
+	return false
+}
+
+func normalizeAlignToken(s string) string {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "r", "right":
+		return "right"
+	case "c", "center", "centre":
+		return "center"
+	case "l", "left":
+		return "left"
+	default:
+		return ""
+	}
+}
+
+func alignCell(s string, width int, align string) string {
+	vLen := visibleLen(s)
+	pad := width - vLen
+	if pad <= 0 {
+		return s
+	}
+	switch align {
+	case "right":
+		return strings.Repeat(" ", pad) + s
+	case "center":
+		left := pad / 2
+		return strings.Repeat(" ", left) + s + strings.Repeat(" ", pad-left)
+	default:
+		return s + strings.Repeat(" ", pad)
+	}
+}
+
+func shrinkColumnWidths(natural []int, avail int) []int {
+	widths := append([]int(nil), natural...)
+	n := len(widths)
+	if n == 0 {
+		return widths
+	}
+	if avail < n {
+		avail = n
+	}
+	total := 0
+	for _, w := range widths {
+		total += w
+	}
+	if total <= avail {
+		return widths
+	}
+	// Shrink widest columns first down to a floor of 4 chars before shrinking narrower columns.
+	for _, floorW := range []int{4, 1} {
+		for total > avail {
+			maxW := 0
+			for _, w := range widths {
+				if w > floorW && w > maxW {
+					maxW = w
+				}
+			}
+			if maxW == 0 {
+				break
+			}
+			for j := range widths {
+				if widths[j] == maxW && total > avail {
+					widths[j]--
+					total--
+				}
+			}
+		}
+	}
+	return widths
+}
+
+func resolveDelimiter(delim string) string {
+	if delim == "" || delim == `\t` || strings.EqualFold(delim, "tab") {
+		return "\t"
+	}
+	return delim
+}
+
+func runTable(in io.Reader, out io.Writer, errOut io.Writer, opts TableOptions) int {
+	pal := activePalette()
+	delim := resolveDelimiter(opts.Delim)
+	var rawLines []string
+
+	if opts.File != "" {
+		data, err := os.ReadFile(filepath.Clean(opts.File)) // #nosec G304
+		if err != nil {
+			renderPillBadge(errOut, "FAIL", pal.Fail, err.Error(), "")
+			return 1
+		}
+		rawLines = strings.Split(string(data), "\n")
+	} else if len(opts.Rows) > 0 {
+		for _, r := range opts.Rows {
+			expanded := strings.ReplaceAll(r, `\n`, "\n")
+			if delim == "\t" {
+				expanded = strings.ReplaceAll(expanded, `\t`, "\t")
+			}
+			rawLines = append(rawLines, strings.Split(expanded, "\n")...)
+		}
+	} else if in != nil {
+		if f, ok := in.(*os.File); ok && isTerminal(f) {
+			return 0
+		}
+		scanner := bufio.NewScanner(in)
+		scanner.Buffer(make([]byte, 64*1024), 10*1024*1024)
+		for scanner.Scan() {
+			rawLines = append(rawLines, scanner.Text())
+		}
+		if err := scanner.Err(); err != nil {
+			renderPillBadge(errOut, "FAIL", pal.Fail, err.Error(), "")
+			return 1
+		}
+	}
+
+	renderTableLines(out, rawLines, opts)
+	return 0
+}
+
+func renderTable(out io.Writer, opts TableOptions) {
+	delim := resolveDelimiter(opts.Delim)
+	var rawLines []string
+	for _, r := range opts.Rows {
+		expanded := strings.ReplaceAll(r, `\n`, "\n")
+		if delim == "\t" {
+			expanded = strings.ReplaceAll(expanded, `\t`, "\t")
+		}
+		rawLines = append(rawLines, strings.Split(expanded, "\n")...)
+	}
+	renderTableLines(out, rawLines, opts)
+}
+
+func renderTableLines(out io.Writer, rawLines []string, opts TableOptions) {
+	delim := resolveDelimiter(opts.Delim)
+	opts.Title = sanitizeText(opts.Title, false)
+
+	var headerRow []string
+	if opts.Headers != "" {
+		hdrRaw := opts.Headers
+		var parts []string
+		if delim == "\t" && strings.Contains(hdrRaw, `\t`) {
+			hdrRaw = strings.ReplaceAll(hdrRaw, `\t`, "\t")
+		}
+		if strings.Contains(hdrRaw, delim) {
+			parts = strings.Split(hdrRaw, delim)
+		} else {
+			parts = strings.Split(hdrRaw, ",")
+		}
+		for _, p := range parts {
+			headerRow = append(headerRow, sanitizeText(strings.TrimSpace(p), false))
+		}
+	}
+
+	var rows [][]string
+	for _, line := range rawLines {
+		line = strings.TrimRight(line, "\r")
+		if line == "" {
+			continue
+		}
+		parts := strings.Split(line, delim)
+		row := make([]string, len(parts))
+		for i, cell := range parts {
+			row[i] = sanitizeText(cell, false)
+		}
+		rows = append(rows, row)
+	}
+
+	if opts.Header && len(headerRow) == 0 && len(rows) > 0 {
+		headerRow = rows[0]
+		rows = rows[1:]
+	}
+	if len(headerRow) == 0 && len(rows) == 0 {
+		return
+	}
+
+	numCols := len(headerRow)
+	for _, r := range rows {
+		if len(r) > numCols {
+			numCols = len(r)
+		}
+	}
+	if numCols == 0 {
+		return
+	}
+
+	if len(headerRow) > 0 && len(headerRow) < numCols {
+		padded := make([]string, numCols)
+		copy(padded, headerRow)
+		headerRow = padded
+	}
+	for i := range rows {
+		if len(rows[i]) < numCols {
+			padded := make([]string, numCols)
+			copy(padded, rows[i])
+			rows[i] = padded
+		}
+	}
+
+	aligns := make([]string, numCols)
+	if strings.TrimSpace(opts.Align) != "" {
+		tokens := strings.Split(opts.Align, ",")
+		if len(tokens) == 1 {
+			a := normalizeAlignToken(tokens[0])
+			for j := 0; j < numCols; j++ {
+				aligns[j] = a
+			}
+		} else {
+			for j := 0; j < numCols && j < len(tokens); j++ {
+				aligns[j] = normalizeAlignToken(tokens[j])
+			}
+		}
+	}
+	for j := 0; j < numCols; j++ {
+		if aligns[j] == "" {
+			if isNumericColumn(rows, j) {
+				aligns[j] = "right"
+			} else {
+				aligns[j] = "left"
+			}
+		}
+	}
+
+	naturalWidths := make([]int, numCols)
+	for j := 0; j < numCols; j++ {
+		naturalWidths[j] = 1
+		if j < len(headerRow) {
+			if w := visibleLen(headerRow[j]); w > naturalWidths[j] {
+				naturalWidths[j] = w
+			}
+		}
+		for _, r := range rows {
+			if w := visibleLen(r[j]); w > naturalWidths[j] {
+				naturalWidths[j] = w
+			}
+		}
+	}
+
+	borderName := strings.ToLower(strings.TrimSpace(opts.Border))
+	if borderName == "" {
+		borderName = activeConfig.BoxBorder
+	}
+	compact := opts.Compact || borderName == "none"
+
+	termWidth := detectTermWidth()
+	maxTableWidth := clampWidth(termWidth-2, 16, maxTermCols)
+	if opts.Width > 0 {
+		maxTableWidth = clampWidth(opts.Width, 16, maxTermCols)
+	}
+
+	overhead := 3*numCols + 1
+	if compact {
+		overhead = 2 * (numCols - 1)
+	}
+
+	colWidths := append([]int(nil), naturalWidths...)
+	if !opts.NoTruncate {
+		colWidths = shrinkColumnWidths(naturalWidths, maxTableWidth-overhead)
+	}
+
+	// Ensure framed table is wide enough to fit --title in the top border cleanly
+	if !compact && opts.Title != "" {
+		innerTotal := 3*numCols - 1
+		for _, w := range colWidths {
+			innerTotal += w
+		}
+		minTitleInner := visibleLen(opts.Title) + 4
+		if !opts.NoTruncate && minTitleInner > maxTableWidth-2 {
+			minTitleInner = maxTableWidth - 2
+		}
+		if innerTotal < minTitleInner {
+			extra := minTitleInner - innerTotal
+			for extra > 0 {
+				for j := 0; j < numCols && extra > 0; j++ {
+					colWidths[j]++
+					extra--
+				}
+			}
+		}
+	}
+
+	pal := activePalette()
+	colorSpec := opts.Color
+	if colorSpec == "" {
+		colorSpec = activeConfig.BoxColor
+	}
+	grad, useGrad := resolveGradient(opts.Gradient, "", "")
+	c := parseColor(colorSpec, pal.Primary)
+	hdrColor := pal.Secondary
+	if opts.Color != "" {
+		hdrColor = c
+	}
+
+	if compact {
+		if opts.Title != "" {
+			fmt.Fprintf(out, "%s▸%s %s%s%s\n", c.fgANSI(), ansiReset(), ansiBold(), opts.Title, ansiReset())
+		}
+		if len(headerRow) > 0 {
+			var hCells, uCells []string
+			for j := 0; j < numCols; j++ {
+				cell := truncateVisible(headerRow[j], colWidths[j])
+				padded := alignCell(cell, colWidths[j], aligns[j])
+				hCells = append(hCells, ansiBold()+hdrColor.fgANSI()+padded+ansiReset())
+				uCells = append(uCells, c.fgANSI()+strings.Repeat("─", colWidths[j])+ansiReset())
+			}
+			fmt.Fprintln(out, strings.Join(hCells, "  "))
+			fmt.Fprintln(out, strings.Join(uCells, "  "))
+		}
+		for _, r := range rows {
+			var dCells []string
+			for j := 0; j < numCols; j++ {
+				cell := truncateVisible(r[j], colWidths[j])
+				padded := alignCell(cell, colWidths[j], aligns[j])
+				dCells = append(dCells, pal.Text.fgANSI()+padded+ansiReset())
+			}
+			fmt.Fprintln(out, strings.Join(dCells, "  "))
+		}
+		return
+	}
+
+	bStyle, ok := borderStyles[borderName]
+	if !ok {
+		bStyle = borderStyles["rounded"]
+	}
+
+	buildRule := func(left, mid, right, fill string) string {
+		segs := make([]string, numCols)
+		for j, w := range colWidths {
+			segs[j] = strings.Repeat(fill, w+2)
+		}
+		return left + strings.Join(segs, mid) + right
+	}
+
+	topLine := buildRule(bStyle.TopLeft, bStyle.TopTee, bStyle.TopRight, bStyle.Horizontal)
+	if opts.Title != "" {
+		topRunes := []rune(topLine)
+		maxTitleLen := len(topRunes) - 5
+		if maxTitleLen >= 1 {
+			tStr := truncateVisible(opts.Title, maxTitleLen)
+			prefix := []rune(bStyle.TopLeft + bStyle.Horizontal + " " + tStr + " ")
+			if len(prefix) < len(topRunes) {
+				topLine = string(prefix) + string(topRunes[len(prefix):])
+			}
+		}
+	}
+	midLine := buildRule(bStyle.LeftTee, bStyle.Cross, bStyle.RightTee, bStyle.Horizontal)
+	botLine := buildRule(bStyle.BottomLeft, bStyle.BottomTee, bStyle.BottomRight, bStyle.Horizontal)
+
+	emitBorderLine := func(line string) {
+		if useGrad {
+			fmt.Fprintln(out, applyGradientLine(line, grad, false))
+		} else {
+			fmt.Fprintf(out, "%s%s%s\n", c.fgANSI(), line, ansiReset())
+		}
+	}
+
+	vertAt := func(colIdx int) string {
+		colColor := c
+		if useGrad && numCols > 0 {
+			colColor = grad.At(float64(colIdx) / float64(numCols))
+		}
+		return colColor.fgANSI() + bStyle.Vertical + ansiReset()
+	}
+
+	emitRow := func(cells []string, isHeader bool) {
+		var b strings.Builder
+		b.WriteString(vertAt(0))
+		for j := 0; j < numCols; j++ {
+			cell := truncateVisible(cells[j], colWidths[j])
+			padded := alignCell(cell, colWidths[j], aligns[j])
+			b.WriteString(" ")
+			if isHeader {
+				b.WriteString(ansiBold() + hdrColor.fgANSI() + padded + ansiReset())
+			} else {
+				b.WriteString(pal.Text.fgANSI() + padded + ansiReset())
+			}
+			b.WriteString(" ")
+			b.WriteString(vertAt(j + 1))
+		}
+		fmt.Fprintln(out, b.String())
+	}
+
+	emitBorderLine(topLine)
+	if len(headerRow) > 0 {
+		emitRow(headerRow, true)
+		if len(rows) > 0 {
+			emitBorderLine(midLine)
+		}
+	}
+	for _, r := range rows {
+		emitRow(r, false)
+	}
+	emitBorderLine(botLine)
 }
 
 func styleCommandTokens(cmdText string) string {

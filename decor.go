@@ -322,9 +322,8 @@ func renderKV(out io.Writer, title, colorSpec, gradSpec string, pairs []string) 
 	})
 }
 
-// renderCmd formats a shell command preview with a left gutter and syntax-highlighted tokens.
-func renderCmd(out io.Writer, cmdText string) {
-	c := namedColors["cyan"]
+// styleCommandTokens returns a syntax-highlighted command line string.
+func styleCommandTokens(cmdText string) string {
 	tokens := tokenizeCommand(cmdText)
 	var styled []string
 	for i, tok := range tokens {
@@ -341,10 +340,70 @@ func renderCmd(out io.Writer, cmdText string) {
 			styled = append(styled, tok)
 		}
 	}
+	return strings.Join(styled, " ")
+}
+
+// renderCmd formats a single shell command preview with a left gutter and syntax-highlighted tokens.
+func renderCmd(out io.Writer, cmdText string) {
+	c := namedColors["cyan"]
 	fmt.Fprintf(out, "  %s┃%s %s▸%s %s\n",
 		c.fgANSI(), ansiReset(),
 		namedColors["magenta"].fgANSI(), ansiReset(),
-		strings.Join(styled, " "))
+		styleCommandTokens(cmdText))
+}
+
+// renderCodeBlock renders a framed multi-line Zsh code block below a group of visual effects.
+func renderCodeBlock(out io.Writer, title string, lines []string) {
+	if len(lines) == 0 {
+		return
+	}
+	termWidth := detectTermWidth()
+	maxBoxWidth := termWidth - 4
+	if maxBoxWidth < 20 {
+		maxBoxWidth = 20
+	}
+	maxInner := maxBoxWidth - 6
+
+	if title == "" {
+		title = "zsh"
+	}
+
+	innerWidth := visibleLen(title) + 4
+	var clippedPlain []string
+	for _, l := range lines {
+		clipped := truncateVisible(l, maxInner)
+		clippedPlain = append(clippedPlain, clipped)
+		if visibleLen(clipped) > innerWidth {
+			innerWidth = visibleLen(clipped)
+		}
+	}
+	if innerWidth > maxInner {
+		innerWidth = maxInner
+	}
+
+	borderColor := namedColors["gray"]
+	totalH := innerWidth + 4
+	rem := totalH - (visibleLen(title) + 3)
+	if rem < 1 {
+		rem = 1
+	}
+	topLine := "  ╭─ " + title + " " + strings.Repeat("─", rem) + "╮"
+	botLine := "  ╰" + strings.Repeat("─", totalH) + "╯"
+
+	fmt.Fprintf(out, "%s%s%s\n", borderColor.fgANSI(), topLine, ansiReset())
+	for _, plain := range clippedPlain {
+		styled := styleCommandTokens(plain)
+		padCount := innerWidth - visibleLen(plain)
+		if padCount < 0 {
+			padCount = 0
+		}
+		pad := strings.Repeat(" ", padCount)
+		fmt.Fprintf(out, "%s  │%s  %s%s  %s│%s\n",
+			borderColor.fgANSI(), ansiReset(),
+			styled, pad,
+			borderColor.fgANSI(), ansiReset())
+	}
+	fmt.Fprintf(out, "%s%s%s\n", borderColor.fgANSI(), botLine, ansiReset())
 }
 
 // tokenizeCommand splits a command string while keeping quoted segments together.

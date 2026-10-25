@@ -101,6 +101,13 @@ func TestSpinTerminalPromptInPTY(t *testing.T) {
 			time.Sleep(25 * time.Millisecond)
 		}
 		_, _ = io.WriteString(stdinW, "pty-secret\n")
+		for time.Now().Before(deadline) {
+			if strings.Contains(outBuf.String(), "got:pty-secret") {
+				break
+			}
+			time.Sleep(25 * time.Millisecond)
+		}
+		_ = stdinW.Close()
 	}()
 
 	select {

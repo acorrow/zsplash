@@ -115,6 +115,11 @@ func TestBarAndSpin(t *testing.T) {
 
 	os.Setenv("NO_COLOR", "1")
 	defer os.Unsetenv("NO_COLOR")
+
+	origOpenDevTTY := openDevTTY
+	openDevTTY = func() (*os.File, error) { return nil, os.ErrNotExist }
+	defer func() { openDevTTY = origOpenDevTTY }()
+
 	var spinOut, spinErr bytes.Buffer
 	code := runWithExit([]string{"spin", "Testing spinner", "--duration", "40"}, &spinOut, &spinErr)
 	if code != 0 {
@@ -155,12 +160,18 @@ func TestBarAndSpin(t *testing.T) {
 		t.Errorf("expected --static spinner to print title and final PASS badge, got %q", stripANSI(staticRendered))
 	}
 
-	// Verify shouldIsolateProcessGroup decision helper
-	if shouldIsolateProcessGroup(true) {
-		t.Error("expected shouldIsolateProcessGroup(true) to be false when a terminal is attached")
+	// Verify resolveTTYState and shouldIsolateProcessGroup across all three terminal combinations:
+	// 1) /dev/tty available
+	if canAnim, hasCtrl := resolveTTYState(true, false); !canAnim || !hasCtrl || shouldIsolateProcessGroup(hasCtrl) {
+		t.Errorf("expected (/dev/tty=true, stderr=false) -> canAnimate=true, hasControllingTTY=true, isolate=false; got %v, %v", canAnim, hasCtrl)
 	}
-	if !shouldIsolateProcessGroup(false) {
-		t.Error("expected shouldIsolateProcessGroup(false) to be true when no terminal is attached")
+	// 2) no /dev/tty, but stderr is a terminal
+	if canAnim, hasCtrl := resolveTTYState(false, true); !canAnim || hasCtrl || !shouldIsolateProcessGroup(hasCtrl) {
+		t.Errorf("expected (/dev/tty=false, stderr=true) -> canAnimate=true, hasControllingTTY=false, isolate=true; got %v, %v", canAnim, hasCtrl)
+	}
+	// 3) neither /dev/tty nor stderr is a terminal
+	if canAnim, hasCtrl := resolveTTYState(false, false); canAnim || hasCtrl || !shouldIsolateProcessGroup(hasCtrl) {
+		t.Errorf("expected (/dev/tty=false, stderr=false) -> canAnimate=false, hasControllingTTY=false, isolate=true; got %v, %v", canAnim, hasCtrl)
 	}
 }
 

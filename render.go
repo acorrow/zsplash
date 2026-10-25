@@ -665,15 +665,25 @@ type SpinOptions struct {
 	Command             []string
 }
 
-func shouldIsolateProcessGroup(hasTTY bool) bool {
-	return !hasTTY
+var openDevTTY = func() (*os.File, error) {
+	return os.OpenFile("/dev/tty", os.O_WRONLY, 0)
 }
 
-func openTTYWriter(fallback io.Writer) (io.Writer, bool, func()) {
-	if tty, err := os.OpenFile("/dev/tty", os.O_WRONLY, 0); err == nil {
-		return tty, true, func() { _ = tty.Close() }
+func shouldIsolateProcessGroup(hasControllingTTY bool) bool {
+	return !hasControllingTTY
+}
+
+func resolveTTYState(devTTYAvailable, stderrIsTerminal bool) (canAnimate, hasControllingTTY bool) {
+	return devTTYAvailable || stderrIsTerminal, devTTYAvailable
+}
+
+func openTTYWriter(fallback io.Writer) (io.Writer, bool, bool, func()) {
+	if tty, err := openDevTTY(); err == nil {
+		canAnim, hasCtrl := resolveTTYState(true, false)
+		return tty, canAnim, hasCtrl, func() { _ = tty.Close() }
 	}
-	return fallback, isWriterTerminal(fallback), func() {}
+	canAnim, hasCtrl := resolveTTYState(false, isWriterTerminal(fallback))
+	return fallback, canAnim, hasCtrl, func() {}
 }
 
 func isWriterTerminal(w io.Writer) bool {
@@ -688,10 +698,13 @@ func isTerminal(f *os.File) bool {
 		return false
 	}
 	fi, err := f.Stat()
-	if err != nil {
+	if err != nil || fi.Mode()&os.ModeCharDevice == 0 {
 		return false
 	}
-	return fi.Mode()&os.ModeCharDevice != 0
+	if dn, err := os.Stat(os.DevNull); err == nil && os.SameFile(fi, dn) {
+		return false
+	}
+	return true
 }
 
 func signalExitCode(sig os.Signal) int {
@@ -717,7 +730,7 @@ func exitCodeFromError(err error) int {
 }
 
 func runSpinner(stdout, stderr io.Writer, opts SpinOptions) int {
-	ttyOut, hasTTY, closeTTY := openTTYWriter(stderr)
+	ttyOut, canAnimate, hasControllingTTY, closeTTY := openTTYWriter(stderr)
 	defer closeTTY()
 	styleName := strings.ToLower(strings.TrimSpace(opts.Style))
 	if styleName == "" {
@@ -754,7 +767,7 @@ func runSpinner(stdout, stderr io.Writer, opts SpinOptions) int {
 		if opts.Stdin || !stdinTTY {
 			cmd.Stdin = os.Stdin
 		}
-		prepareChild(cmd, hasTTY)
+		prepareChild(cmd, hasControllingTTY)
 		if err := cmd.Start(); err != nil {
 			renderPillBadge(ttyOut, "FAIL", pal.Fail, title, err.Error())
 			return 1
@@ -771,7 +784,7 @@ func runSpinner(stdout, stderr io.Writer, opts SpinOptions) int {
 		}()
 	}
 
-	staticMode := opts.Static || !hasTTY
+	staticMode := opts.Static || !canAnimate
 	if staticMode {
 		fmt.Fprintf(ttyOut, "  %s%s▸%s %s%s%s\n", ansiBold(), c.fgANSI(), ansiReset(), ansiBold(), title, ansiReset())
 	} else if !noColorEnabled() {
@@ -810,8 +823,8 @@ func runSpinner(stdout, stderr io.Writer, opts SpinOptions) int {
 				sysSig = s
 			}
 			if sigCount == 1 {
-				if sysSig == syscall.SIGINT && hasTTY {
-					// A terminal is attached and already delivered SIGINT to the foreground process group;
+				if sysSig == syscall.SIGINT && hasControllingTTY {
+					// A controlling terminal is attached and already delivered SIGINT to the foreground process group;
 					// let the child take as long as it needs to clean up until a second Ctrl-C arrives.
 					continue
 				}
@@ -967,7 +980,7 @@ func renderBar(out io.Writer, opts BarOptions) {
 }
 
 func runStreamProgress(in io.Reader, out io.Writer, total int, title, colorSpec, gradSpec string) int {
-	ttyOut, hasTTY, closeTTY := openTTYWriter(out)
+	ttyOut, canAnimate, _, closeTTY := openTTYWriter(out)
 	defer closeTTY()
 	if total <= 0 {
 		total = 100
@@ -980,7 +993,7 @@ func runStreamProgress(in io.Reader, out io.Writer, total int, title, colorSpec,
 	scanner := bufio.NewScanner(in)
 	scanner.Buffer(make([]byte, 64*1024), 10*1024*1024)
 	count := 0
-	if hasTTY {
+	if canAnimate {
 		renderBar(ttyOut, BarOptions{Current: 0, Total: total, Label: title, Color: colorSpec, Gradient: gradSpec, InPlace: true})
 	}
 	for scanner.Scan() {
@@ -988,11 +1001,11 @@ func runStreamProgress(in io.Reader, out io.Writer, total int, title, colorSpec,
 		if count > total {
 			total = count
 		}
-		if hasTTY {
+		if canAnimate {
 			renderBar(ttyOut, BarOptions{Current: count, Total: total, Label: title, Color: colorSpec, Gradient: gradSpec, InPlace: true})
 		}
 	}
-	if hasTTY {
+	if canAnimate {
 		fmt.Fprint(ttyOut, "\r\033[2K")
 	}
 	if err := scanner.Err(); err != nil {

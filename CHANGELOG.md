@@ -1,11 +1,18 @@
 # Changelog
 
+## v0.6.6 (2026-10-25)
+
+- `spin`: separated `canAnimate` (`/dev/tty` available or `stderr` is a terminal) from `hasControllingTTY` (`/dev/tty` available) so process-group isolation (`Setpgid`) and `SIGINT` forwarding still apply when `stderr` is a terminal but no controlling terminal is attached.
+- `spin`: note on `v0.6.5` non-terminal behavior: in CI and cron (when neither `/dev/tty` nor `stderr` is a terminal), `spin` always prints the title line and a final `[PASS]` badge on `stderr` even without `--persist`; `stdout` is unaffected.
+- `tests`: made `/dev/tty` opening replaceable in unit tests so `spin` and `progress` buffer assertions pass when `go test ./...` is run from an interactive terminal as well as in CI, and closed the PTY input pipe in `TestSpinTerminalPromptInPTY` once output arrives so `script` exits immediately.
+- `ci`: added top-level `permissions: contents: read` and pinned GitHub Actions to full commit SHAs in both `zsplash` and `homebrew-tap`.
+
 ## v0.6.5 (2026-10-25)
 
 - `spin`, `progress`: when `/dev/tty` is unavailable and `stderr` is not a terminal (CI, cron, logs redirected to a file), `spin` behaves as if `--static` were set (printing the title once and the final badge with no 80ms redraws or cursor escapes) and `progress` skips per-line redraws and prints only the final `PASS`/`FAIL` badge.
 - `docs`, `README.md`: added a "Using `zsp` in Scripts" guide covering default sanitization, passing untrusted values after `--`, naming the subcommand, exit codes, `spin` flags (`--static`, `--stdin`, `SIGTERM`), and `NO_COLOR`/`TERM=dumb`.
 - `help`: use `len(themeOrder)` (`20`) instead of a hard-coded `10` in `zsp help` and `zsp docs`.
-- `ci`: added GitHub Actions workflows for `ubuntu-latest`, `macos-latest`, and `windows` builds/tests, plus Homebrew tap formula audit and build verification.
+- `ci`: added GitHub Actions workflows for `ubuntu-latest` and `macos-latest` builds/tests plus a `windows` cross-build, and Homebrew tap formula audit and build verification.
 
 ## v0.6.4 (2026-10-25)
 

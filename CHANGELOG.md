@@ -1,11 +1,17 @@
 # Changelog
 
+## v0.6.9 (2026-10-25)
+
+- `docs`: clarified in `README.md`, `zsp help spin`, `zsp docs`, and `CHANGELOG.md` that Linux `Pdeathsig` (`SIGKILL`) only covers some cases when `zsp` is `SIGKILL`ed:
+  1. `Pdeathsig` only applies to the direct child: if `zsp` is `SIGKILL`ed, the command `spin` started is killed, but anything it started in the background (e.g. `zsp spin -- sh -c 'a & b'`) can keep running. Wrap commands with `exec` where possible (`sh -c 'exec ...'`), or use `SIGTERM`/`SIGHUP`/`SIGINT`, which signal the whole process group when no terminal is attached.
+  2. Linux clears `Pdeathsig` when the child runs a setuid/setgid program, so `zsp spin -- sudo ...` (and other setuid programs) is not protected if `zsp` is `SIGKILL`ed. Normal signals (`SIGTERM`, `SIGHUP`, `SIGINT`) still work as documented.
+
 ## v0.6.8 (2026-10-25)
 
 - `flags`, `spin` (bug fix): value-taking flags across all commands (including `-T`/`--theme` and `spin`'s `-s`, `-c`, `-d`, `-t`) never consume `--` as their value. Previously, passing a title such as `"-s"` before `--` (`zsp spin "$step" -- ./deploy.sh`) caused `-s` to consume `--` as its style argument, skipping the child command while exiting `0`.
 - `spin`: added `--title <t>` / `--title=<t>` (`-t`) so scripts can pass untrusted spinner titles safely (`zsp spin --title="$step" -- ./deploy.sh`).
 - `spin`: forward `SIGHUP` (exit `129`) and `SIGQUIT` (exit `131`) to the child (or child process group when no terminal is attached) with a 5s grace period before `SIGKILL`.
-- `spin`: on Linux, set `SysProcAttr.Pdeathsig = syscall.SIGKILL` with `runtime.LockOSThread()` held across `cmd.Start()` through `cmd.Wait()` so the child does not outlive `zsp` if `zsp` is `SIGKILL`ed (documented the macOS limitation where no `Pdeathsig` equivalent exists).
+- `spin`: on Linux, set `SysProcAttr.Pdeathsig = syscall.SIGKILL` with `runtime.LockOSThread()` held across `cmd.Start()` through `cmd.Wait()` so the direct child does not outlive `zsp` if `zsp` is `SIGKILL`ed. Note that `Pdeathsig` only applies to the direct child (background grandchildren such as `zsp spin -- sh -c 'a & b'` can keep running unless wrapped with `exec` or signaled via `SIGTERM`/`SIGHUP`/`SIGINT`) and is cleared by Linux when the child execs a setuid/setgid binary such as `sudo`; macOS has no `Pdeathsig` equivalent.
 
 ## v0.6.7 (2026-10-25)
 

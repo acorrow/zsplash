@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-var version = "0.6.8"
+var version = "0.6.9"
 
 func main() {
 	code := runWithExit(os.Args[1:], os.Stdout, os.Stderr)

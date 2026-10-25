@@ -55,7 +55,10 @@ find . -type f | zsp progress --total 100 --title "Indexing"
   - Use `--static` for commands that prompt (`sudo`, `ssh`, `git`, `gpg`).
   - Use `--stdin` only for interactive input (piped `stdin` is passed through automatically).
   - Prefer `SIGTERM` over `kill -INT` when a terminal is attached. `SIGHUP` and `SIGQUIT` are also forwarded with a 5s grace period before `SIGKILL` (exiting `129` and `131`).
-  - On Linux, `Pdeathsig` (`SIGKILL`) stops the child if `zsp` is killed outright (`SIGKILL`). macOS has no equivalent of `Pdeathsig`, so `SIGKILL` of `zsp` on macOS can leave the child running when no terminal is attached.
+  - On Linux, `Pdeathsig` (`SIGKILL`) is set on the direct child if `zsp` is killed outright (`SIGKILL`), but it only covers some cases:
+    1. `Pdeathsig` only applies to the direct child: if `zsp` is `SIGKILL`ed, the command `spin` started is killed, but anything it started in the background (e.g. `zsp spin -- sh -c 'a & b'`) can keep running. Wrap commands with `exec` where possible (`sh -c 'exec ...'`), or use `SIGTERM`/`SIGHUP`/`SIGINT`, which signal the whole process group when no terminal is attached.
+    2. Linux clears `Pdeathsig` when the child runs a setuid/setgid program, so `zsp spin -- sudo ...` (and other setuid programs) is not protected if `zsp` is `SIGKILL`ed. Normal signals (`SIGTERM`, `SIGHUP`, `SIGINT`) still work as documented.
+  - macOS has no equivalent of `Pdeathsig`, so `SIGKILL` of `zsp` on macOS can leave the child running when no terminal is attached.
 - **Log-friendly output**: `NO_COLOR` and `TERM=dumb` disable color. When no terminal is attached (`CI`, `cron`, logs redirected to a file), `spin` and `progress` skip in-place redraws automatically.
 
 ## Themes & Config

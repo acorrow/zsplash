@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-var version = "0.5.0"
+var version = "0.5.1"
 
 func main() {
 	code := runWithExit(os.Args[1:], os.Stdout, os.Stderr)
@@ -544,8 +544,9 @@ func renderDemo(out io.Writer) {
 	renderBanner(out, BannerOptions{Text: "COMPACT 2-ROW", Font: "compact", Color: "secondary"})
 	renderBanner(out, BannerOptions{Text: "LINE FONT", Font: "line", Color: "warn"})
 	fmt.Fprintln(out)
-	renderCodeBlock(out, "zsh: banners", []string{
+	renderCodeBlock(out, "zsh: banners & step headers", []string{
 		`zsp banner "ZSPLASH" --font block --frame`,
+		`zsp step 1 5 "Crisp Unicode Block Fonts (Solid by Default)"`,
 		`zsp banner "COMPACT 2-ROW" --font compact --color secondary`,
 		`zsp banner "LINE FONT" --font line --color warn`,
 	})
@@ -566,9 +567,11 @@ func renderDemo(out io.Writer) {
 	})
 	fmt.Fprintln(out)
 
-	renderStep(out, "3", "5", "Boxes, Key-Value Cards & Trees", "", "")
+	renderStep(out, "3", "5", "Boxes, Dividers, Key-Value Cards & Trees", "", "")
 	fmt.Fprintln(out)
 	renderBox(out, BoxOptions{Text: "Deployment complete", Title: "Prod", Border: "double"})
+	fmt.Fprintln(out)
+	renderRule(out, "SUMMARY", "secondary", "", 0)
 	fmt.Fprintln(out)
 	renderKV(out, "Release Target", "", "", []string{
 		"Binary", "zsplash (zsp)",
@@ -578,10 +581,15 @@ func renderDemo(out io.Writer) {
 	fmt.Fprintln(out)
 	renderTree(out, "Preflight Checks", []string{"Config valid", "Migrations clean"}, "")
 	fmt.Fprintln(out)
-	renderCodeBlock(out, "zsh: structured layout", []string{
+	renderCmd(out, "docker build --tag app:latest .")
+	fmt.Fprintln(out)
+	renderCodeBlock(out, "zsh: structured layout & dividers", []string{
+		`zsp step 3 5 "Boxes, Dividers, Key-Value Cards & Trees"`,
 		`zsp box "Deployment complete" --title "Prod" --border double`,
+		`zsp rule "SUMMARY" --color secondary`,
 		`zsp kv --title "Release Target" "Binary" "zsplash (zsp)" "Active Theme" "` + currentThemeName() + `"`,
 		`zsp tree --title "Preflight Checks" "Config valid" "Migrations clean"`,
+		`zsp cmd "docker build --tag app:latest ."`,
 	})
 	fmt.Fprintln(out)
 

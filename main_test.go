@@ -125,12 +125,14 @@ func TestDemo(t *testing.T) {
 	out := stripANSI(buf.String())
 	for _, expected := range []string{
 		"Release Target",
-		"zsh: banners",
+		"zsh: banners & step headers",
 		"zsh: badges",
-		"zsh: structured layout",
+		"zsh: structured layout & dividers",
 		"zsh: async & progress",
 		"zsh: themes, defaults & docs",
 		`zsp banner "ZSPLASH"`,
+		`zsp step 1 5`,
+		`zsp rule "SUMMARY" --color secondary`,
 		`zsp ok   "Database schema verified"   --meta "42ms"`,
 		`zsp kv --title "Release Target"`,
 		`zsp bar 78 100`,

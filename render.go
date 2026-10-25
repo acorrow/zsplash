@@ -114,6 +114,12 @@ func renderBanner(out io.Writer, opts BannerOptions) {
 		}
 	}
 
+	isLineFont := font == "line" || font == "thin"
+	boldSeq := ansiBold()
+	if isLineFont {
+		boldSeq = ""
+	}
+
 	if opts.Frame {
 		maxW := 0
 		for _, r := range allRows {
@@ -140,9 +146,9 @@ func renderBanner(out io.Writer, opts BannerOptions) {
 		}
 		for _, r := range allRows {
 			padded := padRight(r, maxW)
-			inner := solidColor.fgANSI() + ansiBold() + padded + ansiReset()
+			inner := solidColor.fgANSI() + boldSeq + padded + ansiReset()
 			if useGrad {
-				inner = applyGradientLine(padded, grad, true)
+				inner = applyGradientLine(padded, grad, !isLineFont)
 			}
 			fmt.Fprintf(out, "%s│%s  %s  %s│%s\n", bColor.fgANSI(), ansiReset(), inner, rColor.fgANSI(), ansiReset())
 		}
@@ -166,9 +172,9 @@ func renderBanner(out io.Writer, opts BannerOptions) {
 
 	for _, r := range allRows {
 		if useGrad {
-			fmt.Fprintln(out, applyGradientLine(r, grad, true))
+			fmt.Fprintln(out, applyGradientLine(r, grad, !isLineFont))
 		} else {
-			fmt.Fprintf(out, "%s%s%s%s\n", solidColor.fgANSI(), ansiBold(), r, ansiReset())
+			fmt.Fprintf(out, "%s%s%s%s\n", solidColor.fgANSI(), boldSeq, r, ansiReset())
 		}
 	}
 	if opts.Subtitle != "" {
@@ -322,7 +328,7 @@ func renderBox(out io.Writer, opts BoxOptions) {
 	}
 
 	if useGrad {
-		fmt.Fprintln(out, applyGradientLine(topLine, grad, true))
+		fmt.Fprintln(out, applyGradientLine(topLine, grad, false))
 	} else {
 		fmt.Fprintf(out, "%s%s%s\n", c.fgANSI(), topLine, ansiReset())
 	}
@@ -442,7 +448,7 @@ func renderRule(out io.Writer, label, colorSpec, gradSpec string, width int) {
 	grad, useGrad := resolveGradient(gradSpec, "", "")
 	c := parseColor(colorSpec, pal.Primary)
 	if useGrad {
-		fmt.Fprintln(out, applyGradientLine(line, grad, true))
+		fmt.Fprintln(out, applyGradientLine(line, grad, false))
 	} else {
 		fmt.Fprintf(out, "%s%s%s\n", c.fgANSI(), line, ansiReset())
 	}

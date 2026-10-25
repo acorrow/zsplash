@@ -66,6 +66,16 @@ func TestBannerFonts(t *testing.T) {
 			t.Errorf("font %q: expected multi-line banner output, got %q", font, out)
 		}
 	}
+
+	var lineBuf, blockBuf bytes.Buffer
+	run([]string{"banner", "LINE FONT", "--font", "line"}, &lineBuf)
+	if strings.Contains(lineBuf.String(), "\033[1m") {
+		t.Errorf("expected line font banner not to emit bold escape (prevents box-drawing distortion in VS Code), got %q", lineBuf.String())
+	}
+	run([]string{"banner", "BLOCK", "--font", "block"}, &blockBuf)
+	if !strings.Contains(blockBuf.String(), "\033[1m") {
+		t.Errorf("expected block font banner to emit bold escape, got %q", blockBuf.String())
+	}
 }
 
 func TestStepAndRule(t *testing.T) {

@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.6.7 (2026-10-25)
+
+- `banner`: do not emit `\033[1m` (`ansiBold`) on `--font line` (or `--font thin`), and keep gradient `box` top borders and `rule` lines unbolded. Prevents VS Code's integrated terminal on macOS from falling back to bold font glyphs for corners (`╭`, `╮`, `╰`, `╯`) and tees (`├`, `┬`, `┴`) while rendering straight segments (`─`, `│`, `╶`, `╴`, `╷`, `╵`) as thin 1px strokes.
+
 ## v0.6.6 (2026-10-25)
 
 - `spin`: separated `canAnimate` (`/dev/tty` available or `stderr` is a terminal) from `hasControllingTTY` (`/dev/tty` available) so process-group isolation (`Setpgid`) and `SIGINT` forwarding still apply when `stderr` is a terminal but no controlling terminal is attached.

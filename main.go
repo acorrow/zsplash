@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-var version = "0.2.0"
+var version = "0.2.1"
 
 func main() {
 	code := runWithExit(os.Args[1:], os.Stdout, os.Stderr)
@@ -460,6 +460,7 @@ func parseSpinFlags(args []string) SpinOptions {
 }
 
 func renderDemo(out io.Writer) {
+	renderCmd(out, `zsp banner "ZSPLASH" --font block --gradient cyber --frame --sub "Reactive Zsh & CLI Text Utility"`)
 	renderBanner(out, BannerOptions{
 		Text:     "ZSPLASH",
 		Font:     "block",
@@ -469,25 +470,45 @@ func renderDemo(out io.Writer) {
 	})
 	fmt.Fprintln(out)
 
+	renderCmd(out, `zsp step 1 4 "Crisp Unicode Block Fonts (compact, block, line)" --gradient cyber`)
 	renderStep(out, "1", "4", "Crisp Unicode Block Fonts (compact, block, line)", "", "cyber")
+	renderCmd(out, `zsp banner "COMPACT 2-ROW" --font compact --gradient ember`)
 	renderBanner(out, BannerOptions{Text: "COMPACT 2-ROW", Font: "compact", Gradient: "ember"})
+	renderCmd(out, `zsp banner "LINE FONT" --font line --gradient matrix`)
 	renderBanner(out, BannerOptions{Text: "LINE FONT", Font: "line", Gradient: "matrix"})
+	fmt.Fprintln(out)
 
+	renderCmd(out, `zsp step 2 4 "Inverted Pill Badges & Metadata" --gradient cyber`)
 	renderStep(out, "2", "4", "Inverted Pill Badges & Metadata", "", "cyber")
+	renderCmd(out, `zsp ok "Database schema verified" --meta "42ms"`)
 	renderPillBadge(out, "PASS", namedColors["green"], "Database schema verified", "42ms")
+	renderCmd(out, `zsp info "Worker pool initialized" --meta "8 threads"`)
 	renderPillBadge(out, "INFO", namedColors["blue"], "Worker pool initialized", "8 threads")
+	renderCmd(out, `zsp warn "Rate limit at 85% capacity" --meta "throttling"`)
 	renderPillBadge(out, "WARN", namedColors["yellow"], "Rate limit at 85% capacity", "throttling")
+	renderCmd(out, `zsp err "Upstream webhook timeout" --meta "exit 1"`)
 	renderPillBadge(out, "FAIL", namedColors["red"], "Upstream webhook timeout", "exit 1")
+	fmt.Fprintln(out)
 
-	renderStep(out, "3", "4", "Key-Value Summary Cards & Command Previews", "", "cyber")
+	renderCmd(out, `zsp step 3 4 "Boxes, Key-Value Cards & Trees" --gradient cyber`)
+	renderStep(out, "3", "4", "Boxes, Key-Value Cards & Trees", "", "cyber")
+	renderCmd(out, `zsp box "Deployment complete" --title "Prod" --border double --gradient ember`)
+	renderBox(out, BoxOptions{Text: "Deployment complete", Title: "Prod", Border: "double", Gradient: "ember"})
+	renderCmd(out, `zsp kv --title "Release Target" "Binary" "zsplash (zsp)" "Branch" "main"`)
 	renderKV(out, "Release Target", "", "cyber", []string{
 		"Binary", "zsplash (zsp)",
-		"Branch", "develop",
+		"Branch", "main",
 		"Terminal Width", fmt.Sprintf("%d cols", detectTermWidth()),
 	})
-	renderCmd(out, "brew upgrade --fetch-HEAD zsplash")
+	renderCmd(out, `zsp tree --title "Preflight Checks" "Config valid" "Migrations clean"`)
+	renderTree(out, "Preflight Checks", []string{"Config valid", "Migrations clean"}, "cyan")
+	fmt.Fprintln(out)
 
-	renderStep(out, "4", "4", "Half-Cell Unicode Progress Bars", "", "cyber")
+	renderCmd(out, `zsp step 4 4 "Async Spinners & Half-Cell Progress Bars" --gradient cyber`)
+	renderStep(out, "4", "4", "Async Spinners & Half-Cell Progress Bars", "", "cyber")
+	renderCmd(out, `zsp spin "Querying database..." --persist -- psql -c "SELECT 1"`)
+	renderPillBadge(out, "PASS", namedColors["green"], "Querying database...", "142ms")
+	renderCmd(out, `zsp bar 78 100 "Deploying shards" --gradient cyber`)
 	renderBar(out, BarOptions{Current: 78, Total: 100, Label: "Deploying shards", Gradient: "cyber"})
 }
 

@@ -120,7 +120,16 @@ func TestBarAndSpin(t *testing.T) {
 func TestDemo(t *testing.T) {
 	var buf bytes.Buffer
 	run([]string{"demo"}, &buf)
-	if !strings.Contains(stripANSI(buf.String()), "Release Target") {
-		t.Errorf("expected demo output to render sections, got %q", buf.String())
+	out := stripANSI(buf.String())
+	for _, expected := range []string{
+		"Release Target",
+		`zsp banner "ZSPLASH"`,
+		`zsp ok "Database schema verified"`,
+		`zsp kv --title "Release Target"`,
+		`zsp bar 78 100`,
+	} {
+		if !strings.Contains(out, expected) {
+			t.Errorf("expected demo output to contain %q, got:\n%s", expected, out)
+		}
 	}
 }

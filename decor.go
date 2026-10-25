@@ -322,25 +322,59 @@ func renderKV(out io.Writer, title, colorSpec, gradSpec string, pairs []string) 
 	})
 }
 
-// renderCmd formats a shell command preview with a left gutter and highlighted flags.
+// renderCmd formats a shell command preview with a left gutter and syntax-highlighted tokens.
 func renderCmd(out io.Writer, cmdText string) {
 	c := namedColors["cyan"]
-	flagColor := namedColors["yellow"]
-	tokens := strings.Fields(cmdText)
+	tokens := tokenizeCommand(cmdText)
 	var styled []string
 	for i, tok := range tokens {
-		if i == 0 {
+		switch {
+		case i == 0:
 			styled = append(styled, ansiBold()+namedColors["green"].fgANSI()+tok+ansiReset())
-		} else if strings.HasPrefix(tok, "-") {
-			styled = append(styled, flagColor.fgANSI()+tok+ansiReset())
-		} else {
+		case i == 1 && !strings.HasPrefix(tok, "-") && !strings.HasPrefix(tok, "\""):
+			styled = append(styled, ansiBold()+namedColors["cyan"].fgANSI()+tok+ansiReset())
+		case strings.HasPrefix(tok, "-"):
+			styled = append(styled, namedColors["yellow"].fgANSI()+tok+ansiReset())
+		case strings.HasPrefix(tok, "\"") || strings.HasPrefix(tok, "'"):
+			styled = append(styled, namedColors["white"].fgANSI()+tok+ansiReset())
+		default:
 			styled = append(styled, tok)
 		}
 	}
-	fmt.Fprintf(out, "%s┃%s %s▸%s %s\n",
+	fmt.Fprintf(out, "  %s┃%s %s▸%s %s\n",
 		c.fgANSI(), ansiReset(),
 		namedColors["magenta"].fgANSI(), ansiReset(),
 		strings.Join(styled, " "))
+}
+
+// tokenizeCommand splits a command string while keeping quoted segments together.
+func tokenizeCommand(s string) []string {
+	var tokens []string
+	var current strings.Builder
+	var quote rune
+	for _, r := range s {
+		switch {
+		case quote != 0:
+			current.WriteRune(r)
+			if r == quote {
+				quote = 0
+			}
+		case r == '"' || r == '\'':
+			quote = r
+			current.WriteRune(r)
+		case r == ' ' || r == '\t':
+			if current.Len() > 0 {
+				tokens = append(tokens, current.String())
+				current.Reset()
+			}
+		default:
+			current.WriteRune(r)
+		}
+	}
+	if current.Len() > 0 {
+		tokens = append(tokens, current.String())
+	}
+	return tokens
 }
 
 // renderTree renders a clean Unicode tree/checklist from a list of items.

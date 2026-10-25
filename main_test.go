@@ -120,6 +120,29 @@ func TestBarAndSpin(t *testing.T) {
 	if code != 0 {
 		t.Errorf("expected exit code 0 from timed spinner, got %d", code)
 	}
+
+	// Verify --static prints title once without redraw escapes and emits final PASS badge
+	spinOut.Reset()
+	spinErr.Reset()
+	code = runWithExit([]string{"spin", "Static prompt step", "--static", "--duration", "20"}, &spinOut, &spinErr)
+	if code != 0 {
+		t.Errorf("expected exit code 0 from static spinner, got %d", code)
+	}
+	staticRendered := spinErr.String()
+	if strings.Contains(staticRendered, "\033[2K") {
+		t.Errorf("expected --static spinner not to emit line-clear redraws, got %q", staticRendered)
+	}
+	if !strings.Contains(stripANSI(staticRendered), "▸ Static prompt step") || !strings.Contains(stripANSI(staticRendered), "[PASS]") {
+		t.Errorf("expected --static spinner to print title and final PASS badge, got %q", stripANSI(staticRendered))
+	}
+
+	// Verify shouldIsolateProcessGroup decision helper
+	if shouldIsolateProcessGroup(true) {
+		t.Error("expected shouldIsolateProcessGroup(true) to be false when a terminal is attached")
+	}
+	if !shouldIsolateProcessGroup(false) {
+		t.Error("expected shouldIsolateProcessGroup(false) to be true when no terminal is attached")
+	}
 }
 
 func TestDemo(t *testing.T) {
@@ -279,6 +302,12 @@ func TestDocsAndSchemaAndSubcommandHelp(t *testing.T) {
 		if !strings.Contains(helpOut, "SYNOPSIS") || !strings.Contains(helpOut, "STREAM & EXIT CONTRACT") {
 			t.Errorf("args %v: expected SYNOPSIS and STREAM & EXIT CONTRACT in subcommand help, got:\n%s", args, helpOut)
 		}
+	}
+	buf.Reset()
+	run([]string{"help", "spin"}, &buf)
+	spinHelp := stripANSI(buf.String())
+	if !strings.Contains(spinHelp, "--static") || !strings.Contains(spinHelp, "process group") {
+		t.Errorf("expected 'zsp help spin' to document --static and process group behavior, got:\n%s", spinHelp)
 	}
 }
 

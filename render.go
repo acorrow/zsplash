@@ -659,9 +659,14 @@ var spinnerStyles = map[string][]string{
 type SpinOptions struct {
 	Title, Style, Color string
 	Persist             bool
+	Static              bool
 	Stdin               bool
 	DurationMs          int
 	Command             []string
+}
+
+func shouldIsolateProcessGroup(hasTTY bool) bool {
+	return !hasTTY
 }
 
 func openTTYWriter(fallback io.Writer) (io.Writer, bool, func()) {
@@ -759,10 +764,15 @@ func runSpinner(stdout, stderr io.Writer, opts SpinOptions) int {
 		}()
 	}
 
-	if !noColorEnabled() {
+	if opts.Static {
+		fmt.Fprintf(ttyOut, "  %s%s▸%s %s%s%s\n", ansiBold(), c.fgANSI(), ansiReset(), ansiBold(), title, ansiReset())
+	} else if !noColorEnabled() {
 		fmt.Fprint(ttyOut, "\033[?25l")
 	}
 	restoreTerminal := func() {
+		if opts.Static {
+			return
+		}
 		if !noColorEnabled() {
 			fmt.Fprint(ttyOut, "\r\033[2K\033[?25h")
 		} else {
@@ -834,11 +844,14 @@ func runSpinner(stdout, stderr io.Writer, opts SpinOptions) int {
 				renderPillBadge(ttyOut, "FAIL", pal.Fail, title, elapsed)
 				return exitCodeFromError(err)
 			}
-			if opts.Persist {
+			if opts.Persist || opts.Static {
 				renderPillBadge(ttyOut, "PASS", pal.Pass, title, elapsed)
 			}
 			return 0
 		case <-ticker.C:
+			if opts.Static {
+				continue
+			}
 			termWidth := detectTermWidth()
 			elapsed := formatDuration(time.Since(start))
 			frame := frames[frameIdx%len(frames)]

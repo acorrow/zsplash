@@ -293,7 +293,7 @@ func buildCommandSpecs(grads []string) []CommandSpec {
 		{
 			Name: "spin", Category: "Async & Progress",
 			Summary:  "Animate a live spinner on `/dev/tty` while running a child command, keeping `stdout` untouched for `$(...)` capture.",
-			Synopsis: "zsp spin <title> [--style dots|pulse|meter|line] [--color <c>] [--persist] [--stdin] [--duration <ms>] [-- <command> [args...]]",
+			Synopsis: "zsp spin <title> [--style dots|pulse|meter|line] [--color <c>] [--persist] [--static] [--stdin] [--duration <ms>] [-- <command> [args...]]",
 			Stream:   "Animation writes to `/dev/tty` (fallback: `stderr`). Child `stdout` and `stderr` pass through untouched; child `stdin` is passed through when piped or redirected; `/dev/null` when `stdin` is an interactive terminal unless `--stdin` is set.",
 			ExitCode: "Propagates exact exit code of `<command>` (`128 + signal` when terminated by a signal: `130` on `SIGINT`, `143` on `SIGTERM`).",
 			Positionals: []ArgSpec{
@@ -304,14 +304,21 @@ func buildCommandSpecs(grads []string) []CommandSpec {
 				flg("-s", "--style", "<style>", []string{"dots", "pulse", "meter", "line"}, "dots", "spin.style", "Spinner animation frames."),
 				flg("-c", "--color", "<color>", nil, "primary", "spin.color", "Spinner glyph color."),
 				flg("-p", "--persist", "", nil, "false", "", "Print final `PASS`/`FAIL` badge with elapsed time on `/dev/tty`."),
+				flg("", "--static", "", nil, "false", "", "Print the title once without redrawing, then print the final badge (recommended for commands that prompt, such as `sudo`, `ssh`, `git`, or `gpg`)."),
 				flg("", "--stdin", "", nil, "false", "", "Pass parent `stdin` through to the child command instead of `/dev/null`."),
 				flg("-d", "--duration", "<ms>", nil, "600", "", "Timed spin duration in ms when no `-- <command>` is given."),
 			},
 			Rules: []string{
 				"Safe inside `VAR=$(zsp spin \"...\" --persist -- cmd args)`: animation renders on `/dev/tty`, never polluting `VAR`.",
 				"Always separate the child command with `--` so child flags are not parsed by `zsp`.",
+				"Use `--static` for commands that may prompt for input (`sudo`, `ssh`, `git`, `gpg`) so the 80ms spinner redraw does not overwrite the prompt.",
+				"With a terminal attached (`/dev/tty` available): the child stays in the terminal's process group so it can prompt (`sudo`, `ssh`, `git`, `gpg`). The first `Ctrl-C` waits for cleanup; a second `Ctrl-C` kills the child. A `SIGINT` sent directly to `zsp`'s process ID is not passed on (use `SIGTERM` instead). `SIGTERM` reaches the child only (not grandchildren), followed by `SIGKILL` after 5s.",
+				"Without a terminal (CI, cron): the child gets its own process group, and the whole group is signalled, followed by `SIGKILL` after 5s.",
 			},
-			Examples: []string{`COUNT=$(zsp spin "Querying DB..." --persist -- psql -tA -c "SELECT count(*) FROM users")`},
+			Examples: []string{
+				`COUNT=$(zsp spin "Querying DB..." --persist -- psql -tA -c "SELECT count(*) FROM users")`,
+				`zsp spin "Deploying with sudo..." --static -- sudo ./deploy.sh`,
+			},
 		},
 		{
 			Name: "bar", Category: "Async & Progress",
@@ -440,6 +447,13 @@ func renderCommandHelp(out io.Writer, c CommandSpec) {
 		}
 		fmt.Fprintln(out)
 	}
+	if len(c.Rules) > 0 {
+		fmt.Fprintf(out, "%s%sNOTES & RULES%s\n", ansiBold(), pal.Secondary.fgANSI(), ansiReset())
+		for _, r := range c.Rules {
+			fmt.Fprintf(out, "  • %s\n", r)
+		}
+		fmt.Fprintln(out)
+	}
 	if len(c.Examples) > 0 {
 		renderCodeBlock(out, "zsh: "+c.Name, c.Examples)
 	}
@@ -473,6 +487,9 @@ func renderDocsMarkdown(out io.Writer) {
 		fmt.Fprintf(out, "\n### `zsp %s`\n%s\n- **Synopsis**: `%s`\n- **Stream**: %s | **Exit Code**: %s\n", cmd.Name, cmd.Summary, cmd.Synopsis, cmd.Stream, cmd.ExitCode)
 		for _, f := range cmd.Flags {
 			fmt.Fprintf(out, "  - `%s %s`: %s\n", f.Long, f.ValueName, f.Description)
+		}
+		for _, r := range cmd.Rules {
+			fmt.Fprintf(out, "  - **Note**: %s\n", r)
 		}
 	}
 	fmt.Fprintln(out, "\n## 6. Complete Zsh Recipe")

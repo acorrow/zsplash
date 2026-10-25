@@ -8,7 +8,7 @@ import (
 )
 
 func prepareChild(cmd *exec.Cmd, hasTTY bool) {
-	if !hasTTY {
+	if shouldIsolateProcessGroup(hasTTY) {
 		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	}
 }

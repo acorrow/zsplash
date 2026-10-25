@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-var version = "0.6.3"
+var version = "0.6.4"
 
 func main() {
 	code := runWithExit(os.Args[1:], os.Stdout, os.Stderr)
@@ -568,6 +568,8 @@ func parseSpinFlags(args []string) SpinOptions {
 			i++
 		case a == "--persist" || a == "-p":
 			opts.Persist = true
+		case a == "--static":
+			opts.Static = true
 		case a == "--stdin":
 			opts.Stdin = true
 		case (a == "--duration" || a == "-d") && i+1 < len(args):
@@ -701,7 +703,7 @@ func printHelp(out io.Writer) {
 	fmt.Fprintln(out, "  zsp code [--title <t>] <line1> <line2> ...")
 	fmt.Fprintln(out, "  zsp tree [--title <t>] <item1> <item2> ...")
 	fmt.Fprintln(out, "  zsp style <text> [--fg <c>] [--bg <c>] [--bold] [--italic] [--underline]")
-	fmt.Fprintln(out, "  zsp spin <title> [--style dots|pulse|meter|line] [--persist] -- <cmd> [args...]")
+	fmt.Fprintln(out, "  zsp spin <title> [--style dots|pulse|meter|line] [--persist] [--static] -- <cmd> [args...]")
 	fmt.Fprintln(out, "  zsp bar <curr> <total> [label] [--in-place|-r] [--color <c>]")
 	fmt.Fprintln(out, "  zsp progress [--total <n>] [--title <t>] (reads lines from stdin)")
 	fmt.Fprintln(out, "  zsp themes         List all 10 built-in color palettes (nes, snes, dracula, nord, etc.)")

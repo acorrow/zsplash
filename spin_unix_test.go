@@ -4,14 +4,89 @@ package main
 
 import (
 	"bufio"
+	"bytes"
+	"fmt"
+	"io"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
 	"testing"
 	"time"
 )
+
+func TestPrepareChildProcessGroupDecision(t *testing.T) {
+	cmdWithTTY := exec.Command("true")
+	prepareChild(cmdWithTTY, true)
+	if cmdWithTTY.SysProcAttr != nil && cmdWithTTY.SysProcAttr.Setpgid {
+		t.Fatal("expected prepareChild(cmd, true) to keep child in terminal process group (Setpgid=false)")
+	}
+
+	cmdWithoutTTY := exec.Command("true")
+	prepareChild(cmdWithoutTTY, false)
+	if cmdWithoutTTY.SysProcAttr == nil || !cmdWithoutTTY.SysProcAttr.Setpgid {
+		t.Fatal("expected prepareChild(cmd, false) to isolate child process group (Setpgid=true)")
+	}
+}
+
+func TestSpinTerminalPromptInPTY(t *testing.T) {
+	if _, err := exec.LookPath("script"); err != nil {
+		t.Skip("skipping PTY test: 'script' utility not available")
+	}
+
+	binPath := filepath.Join(t.TempDir(), "zsplash")
+	buildCmd := exec.Command("go", "build", "-o", binPath, ".")
+	if out, err := buildCmd.CombinedOutput(); err != nil {
+		t.Fatalf("failed to build zsplash binary: %v\n%s", err, string(out))
+	}
+
+	var scriptCmd *exec.Cmd
+	if runtime.GOOS == "linux" {
+		cmdStr := fmt.Sprintf("%q spin --static Prompting -- sh -c 'read x </dev/tty; echo got:$x'", binPath)
+		scriptCmd = exec.Command("script", "-q", "-e", "-c", cmdStr, "/dev/null")
+	} else {
+		scriptCmd = exec.Command("script", "-q", "/dev/null", binPath, "spin", "--static", "Prompting", "--", "sh", "-c", "read x </dev/tty; echo got:$x")
+	}
+
+	stdinR, stdinW := io.Pipe()
+	scriptCmd.Stdin = stdinR
+	var outBuf bytes.Buffer
+	scriptCmd.Stdout = &outBuf
+	scriptCmd.Stderr = &outBuf
+
+	if err := scriptCmd.Start(); err != nil {
+		t.Skipf("skipping PTY test: script failed to start: %v", err)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		done <- scriptCmd.Wait()
+	}()
+
+	go func() {
+		time.Sleep(250 * time.Millisecond)
+		_, _ = io.WriteString(stdinW, "pty-secret\n")
+		time.Sleep(250 * time.Millisecond)
+		_ = stdinW.Close()
+	}()
+
+	select {
+	case err := <-done:
+		out := outBuf.String()
+		if err != nil && !strings.Contains(out, "got:pty-secret") {
+			t.Fatalf("script pty command failed (%v), output:\n%s", err, out)
+		}
+		if !strings.Contains(out, "got:pty-secret") {
+			t.Fatalf("expected pty output to contain 'got:pty-secret', got:\n%s", out)
+		}
+	case <-time.After(5 * time.Second):
+		_ = stdinW.Close()
+		_ = scriptCmd.Process.Kill()
+		t.Fatalf("spin child reading /dev/tty hung inside pty (SIGTTIN regression); output so far:\n%s", outBuf.String())
+	}
+}
 
 func TestSpinUnixProcessGroupSignals(t *testing.T) {
 	binPath := filepath.Join(t.TempDir(), "zsplash")

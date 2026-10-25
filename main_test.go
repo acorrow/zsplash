@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -127,12 +128,86 @@ func TestDemo(t *testing.T) {
 		"zsh: badges",
 		"zsh: structured layout",
 		"zsh: async & progress",
+		"zsh: themes & defaults",
 		`zsp banner "ZSPLASH"`,
 		`zsp kv --title "Release Target"`,
 		`zsp bar 78 100`,
+		`zsp theme nes`,
 	} {
 		if !strings.Contains(out, expected) {
 			t.Errorf("expected demo output to contain %q, got:\n%s", expected, out)
 		}
+	}
+}
+
+func TestSolidDefaultAndNESTheme(t *testing.T) {
+	t.Setenv("ZSPLASH_CONFIG", filepath.Join(t.TempDir(), "config.json"))
+
+	// Default banner in modern theme uses solid #00F5D4 (0;245;212), not a multi-stop gradient
+	var buf bytes.Buffer
+	run([]string{"banner", "NES"}, &buf)
+	rawModern := buf.String()
+	if !strings.Contains(rawModern, "38;2;0;245;212m") {
+		t.Fatalf("expected solid modern primary color (0;245;212) by default, got: %q", rawModern)
+	}
+
+	// Passing --theme nes switches to the NES hardware palette (#E40058 -> 228;0;88)
+	buf.Reset()
+	run([]string{"--theme", "nes", "banner", "NES"}, &buf)
+	rawNES := buf.String()
+	if !strings.Contains(rawNES, "38;2;228;0;88m") {
+		t.Fatalf("expected solid NES primary color (228;0;88) with --theme nes, got: %q", rawNES)
+	}
+
+	// Listing themes includes nes and other templates
+	buf.Reset()
+	run([]string{"themes"}, &buf)
+	themesOut := stripANSI(buf.String())
+	for _, th := range []string{"modern", "nes", "snes", "gameboy", "dracula", "catppuccin", "nord", "gruvbox", "tokyonight", "amber"} {
+		if !strings.Contains(themesOut, th) {
+			t.Errorf("expected themes list to include %q, got:\n%s", th, themesOut)
+		}
+	}
+}
+
+func TestConfigPersistenceAndOverrides(t *testing.T) {
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("ZSPLASH_CONFIG", cfgPath)
+
+	var buf bytes.Buffer
+	// Set default theme to nes
+	run([]string{"theme", "nes"}, &buf)
+	if !strings.Contains(stripANSI(buf.String()), `Default theme set to "nes"`) {
+		t.Fatalf("expected confirmation when setting theme to nes, got: %q", stripANSI(buf.String()))
+	}
+
+	// Verify banner now defaults to NES red without passing --theme
+	buf.Reset()
+	run([]string{"banner", "P1"}, &buf)
+	if !strings.Contains(buf.String(), "38;2;228;0;88m") {
+		t.Fatalf("expected persisted nes theme color (228;0;88), got: %q", buf.String())
+	}
+
+	// Override box.border to double and color.primary to #112233 (17;34;51)
+	buf.Reset()
+	run([]string{"config", "set", "box.border", "double"}, &buf)
+	buf.Reset()
+	run([]string{"config", "set", "color.primary", "#112233"}, &buf)
+
+	buf.Reset()
+	run([]string{"box", "Custom Box"}, &buf)
+	boxRaw := buf.String()
+	boxPlain := stripANSI(boxRaw)
+	if !strings.Contains(boxPlain, "╔") || !strings.Contains(boxRaw, "38;2;17;34;51m") {
+		t.Fatalf("expected double border and custom primary color (17;34;51), got: %q", boxRaw)
+	}
+
+	// Reset config and verify it returns to modern defaults
+	buf.Reset()
+	run([]string{"config", "reset"}, &buf)
+	buf.Reset()
+	run([]string{"banner", "P1"}, &buf)
+	if !strings.Contains(buf.String(), "38;2;0;245;212m") {
+		t.Fatalf("expected modern primary color (0;245;212) after config reset, got: %q", buf.String())
 	}
 }

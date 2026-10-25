@@ -58,7 +58,11 @@ func renderBox(out io.Writer, opts BoxOptions) {
 		maxBoxWidth = 16
 	}
 
-	bStyle, ok := borderStyles[strings.ToLower(strings.TrimSpace(opts.Border))]
+	borderName := strings.ToLower(strings.TrimSpace(opts.Border))
+	if borderName == "" {
+		borderName = activeConfig.BoxBorder
+	}
+	bStyle, ok := borderStyles[borderName]
 	if !ok {
 		bStyle = borderStyles["rounded"]
 	}
@@ -85,8 +89,13 @@ func renderBox(out io.Writer, opts BoxOptions) {
 		innerWidth = maxInnerText
 	}
 
+	pal := activePalette()
+	colorSpec := opts.Color
+	if colorSpec == "" {
+		colorSpec = activeConfig.BoxColor
+	}
 	grad, useGrad := resolveGradient(opts.Gradient, opts.FromHex, opts.ToHex)
-	c := parseColor(opts.Color, namedColors["cyan"])
+	c := parseColor(colorSpec, pal.Primary)
 
 	totalH := innerWidth + 4
 	var topLine string
@@ -196,11 +205,12 @@ func renderStep(out io.Writer, current, total, title, colorSpec, gradSpec string
 	}
 	ruleLine := "━━━ " + tag + " " + strings.Repeat("━", rem)
 
-	grad, useGrad := resolveGradient(gradSpec, "", "")
-	if !useGrad && colorSpec == "" {
-		grad, useGrad = resolveGradient("cyber", "", "")
+	pal := activePalette()
+	if colorSpec == "" {
+		colorSpec = activeConfig.StepColor
 	}
-	c := parseColor(colorSpec, namedColors["cyan"])
+	grad, useGrad := resolveGradient(gradSpec, "", "")
+	c := parseColor(colorSpec, pal.Primary)
 
 	if useGrad {
 		fmt.Fprintln(out, applyGradientLine(ruleLine, grad, true))
@@ -209,7 +219,10 @@ func renderStep(out io.Writer, current, total, title, colorSpec, gradSpec string
 	}
 
 	if title != "" {
-		arrowColor := c
+		arrowColor := pal.Secondary
+		if colorSpec != "" {
+			arrowColor = c
+		}
 		if useGrad {
 			arrowColor = grad.At(0.0)
 		}
@@ -243,8 +256,12 @@ func renderRule(out io.Writer, label, colorSpec, gradSpec string, width int) {
 		line = strings.Repeat("─", left) + "  " + clean + "  " + strings.Repeat("─", right)
 	}
 
+	pal := activePalette()
+	if colorSpec == "" {
+		colorSpec = activeConfig.RuleColor
+	}
 	grad, useGrad := resolveGradient(gradSpec, "", "")
-	c := parseColor(colorSpec, namedColors["cyan"])
+	c := parseColor(colorSpec, pal.Primary)
 	if useGrad {
 		fmt.Fprintln(out, applyGradientLine(line, grad, true))
 	} else {
@@ -298,7 +315,11 @@ func renderKV(out io.Writer, title, colorSpec, gradSpec string, pairs []string) 
 		innerWidth = maxCardWidth - 6
 	}
 
-	c := parseColor(colorSpec, namedColors["cyan"])
+	pal := activePalette()
+	if colorSpec == "" {
+		colorSpec = activeConfig.KVColor
+	}
+	c := parseColor(colorSpec, pal.Secondary)
 	var formattedLines []string
 	for _, it := range items {
 		dots := innerWidth - visibleLen(it.k) - visibleLen(it.v) - 2
@@ -309,33 +330,34 @@ func renderKV(out io.Writer, title, colorSpec, gradSpec string, pairs []string) 
 		line := fmt.Sprintf("%s%s%s %s%s%s %s%s%s",
 			c.fgANSI(), it.k, ansiReset(),
 			ansiDim(), leader, ansiReset(),
-			ansiBold(), it.v, ansiReset())
+			ansiBold()+pal.Text.fgANSI(), it.v, ansiReset())
 		formattedLines = append(formattedLines, line)
 	}
 
 	renderBox(out, BoxOptions{
 		Text:     strings.Join(formattedLines, "\n"),
 		Title:    title,
-		Border:   "rounded",
+		Border:   activeConfig.BoxBorder,
 		Color:    colorSpec,
 		Gradient: gradSpec,
 	})
 }
 
-// styleCommandTokens returns a syntax-highlighted command line string.
+// styleCommandTokens returns a syntax-highlighted command line string using the active theme.
 func styleCommandTokens(cmdText string) string {
+	pal := activePalette()
 	tokens := tokenizeCommand(cmdText)
 	var styled []string
 	for i, tok := range tokens {
 		switch {
 		case i == 0:
-			styled = append(styled, ansiBold()+namedColors["green"].fgANSI()+tok+ansiReset())
+			styled = append(styled, ansiBold()+pal.Pass.fgANSI()+tok+ansiReset())
 		case i == 1 && !strings.HasPrefix(tok, "-") && !strings.HasPrefix(tok, "\""):
-			styled = append(styled, ansiBold()+namedColors["cyan"].fgANSI()+tok+ansiReset())
+			styled = append(styled, ansiBold()+pal.Secondary.fgANSI()+tok+ansiReset())
 		case strings.HasPrefix(tok, "-"):
-			styled = append(styled, namedColors["yellow"].fgANSI()+tok+ansiReset())
+			styled = append(styled, pal.Warn.fgANSI()+tok+ansiReset())
 		case strings.HasPrefix(tok, "\"") || strings.HasPrefix(tok, "'"):
-			styled = append(styled, namedColors["white"].fgANSI()+tok+ansiReset())
+			styled = append(styled, pal.Text.fgANSI()+tok+ansiReset())
 		default:
 			styled = append(styled, tok)
 		}
@@ -345,10 +367,10 @@ func styleCommandTokens(cmdText string) string {
 
 // renderCmd formats a single shell command preview with a left gutter and syntax-highlighted tokens.
 func renderCmd(out io.Writer, cmdText string) {
-	c := namedColors["cyan"]
+	pal := activePalette()
 	fmt.Fprintf(out, "  %s┃%s %s▸%s %s\n",
-		c.fgANSI(), ansiReset(),
-		namedColors["magenta"].fgANSI(), ansiReset(),
+		pal.Primary.fgANSI(), ansiReset(),
+		pal.Secondary.fgANSI(), ansiReset(),
 		styleCommandTokens(cmdText))
 }
 
@@ -369,19 +391,20 @@ func renderCodeBlock(out io.Writer, title string, lines []string) {
 	}
 
 	innerWidth := visibleLen(title) + 4
-	var clippedPlain []string
+	var styledLines []string
 	for _, l := range lines {
 		clipped := truncateVisible(l, maxInner)
-		clippedPlain = append(clippedPlain, clipped)
-		if visibleLen(clipped) > innerWidth {
-			innerWidth = visibleLen(clipped)
+		styled := styleCommandTokens(clipped)
+		styledLines = append(styledLines, styled)
+		if visibleLen(styled) > innerWidth {
+			innerWidth = visibleLen(styled)
 		}
 	}
 	if innerWidth > maxInner {
 		innerWidth = maxInner
 	}
 
-	borderColor := namedColors["gray"]
+	borderColor := activePalette().Muted
 	totalH := innerWidth + 4
 	rem := totalH - (visibleLen(title) + 3)
 	if rem < 1 {
@@ -391,9 +414,8 @@ func renderCodeBlock(out io.Writer, title string, lines []string) {
 	botLine := "  ╰" + strings.Repeat("─", totalH) + "╯"
 
 	fmt.Fprintf(out, "%s%s%s\n", borderColor.fgANSI(), topLine, ansiReset())
-	for _, plain := range clippedPlain {
-		styled := styleCommandTokens(plain)
-		padCount := innerWidth - visibleLen(plain)
+	for _, styled := range styledLines {
+		padCount := innerWidth - visibleLen(styled)
 		if padCount < 0 {
 			padCount = 0
 		}
@@ -438,8 +460,9 @@ func tokenizeCommand(s string) []string {
 
 // renderTree renders a clean Unicode tree/checklist from a list of items.
 func renderTree(out io.Writer, title string, items []string, colorSpec string) {
-	c := parseColor(colorSpec, namedColors["cyan"])
-	okColor := namedColors["green"]
+	pal := activePalette()
+	c := parseColor(colorSpec, pal.Primary)
+	okColor := pal.Pass
 	if title != "" {
 		fmt.Fprintf(out, "%s%s▸ %s%s\n", ansiBold(), c.fgANSI(), title, ansiReset())
 	}

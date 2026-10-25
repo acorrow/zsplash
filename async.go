@@ -44,11 +44,20 @@ func runSpinner(stdout, stderr io.Writer, opts SpinOptions) int {
 	ttyOut, closeTTY := openTTYWriter(stderr)
 	defer closeTTY()
 
-	frames, ok := spinnerStyles[strings.ToLower(strings.TrimSpace(opts.Style))]
+	styleName := strings.ToLower(strings.TrimSpace(opts.Style))
+	if styleName == "" {
+		styleName = activeConfig.SpinStyle
+	}
+	frames, ok := spinnerStyles[styleName]
 	if !ok {
 		frames = spinnerStyles["dots"]
 	}
-	c := parseColor(opts.Color, namedColors["cyan"])
+	pal := activePalette()
+	colorSpec := opts.Color
+	if colorSpec == "" {
+		colorSpec = activeConfig.SpinColor
+	}
+	c := parseColor(colorSpec, pal.Primary)
 	title := strings.TrimSpace(opts.Title)
 	if title == "" {
 		title = "Working..."
@@ -65,7 +74,7 @@ func runSpinner(stdout, stderr io.Writer, opts SpinOptions) int {
 		cmd.Stderr = &cmdStderr
 		cmd.Stdin = os.Stdin
 		if err := cmd.Start(); err != nil {
-			renderPillBadge(ttyOut, "FAIL", namedColors["red"], title, err.Error())
+			renderPillBadge(ttyOut, "FAIL", pal.Fail, title, err.Error())
 			return 1
 		}
 		go func() {
@@ -109,14 +118,14 @@ func runSpinner(stdout, stderr io.Writer, opts SpinOptions) int {
 				_ = cmd.Process.Kill()
 			}
 			restoreTerminal()
-			renderPillBadge(ttyOut, "INT", namedColors["yellow"], title, "interrupted")
+			renderPillBadge(ttyOut, "INT", pal.Warn, title, "interrupted")
 			return 130
 
 		case err := <-doneCh:
 			restoreTerminal()
 			elapsed := formatDuration(time.Since(start))
 			if err != nil {
-				renderPillBadge(ttyOut, "FAIL", namedColors["red"], title, elapsed)
+				renderPillBadge(ttyOut, "FAIL", pal.Fail, title, elapsed)
 				if cmdStderr.Len() > 0 {
 					fmt.Fprint(stderr, cmdStderr.String())
 				}
@@ -126,7 +135,7 @@ func runSpinner(stdout, stderr io.Writer, opts SpinOptions) int {
 				return 1
 			}
 			if opts.Persist {
-				renderPillBadge(ttyOut, "PASS", namedColors["green"], title, elapsed)
+				renderPillBadge(ttyOut, "PASS", pal.Pass, title, elapsed)
 			}
 			return 0
 
@@ -227,12 +236,13 @@ func formatProgressBar(opts BarOptions) string {
 	}
 	emptyStr := strings.Repeat("░", emptyLen)
 
-	gradName := opts.Gradient
-	if gradName == "" && opts.Color == "" {
-		gradName = "cyber"
+	pal := activePalette()
+	colorSpec := opts.Color
+	if colorSpec == "" {
+		colorSpec = activeConfig.BarColor
 	}
-	grad, useGrad := resolveGradient(gradName, "", "")
-	c := parseColor(opts.Color, namedColors["cyan"])
+	grad, useGrad := resolveGradient(opts.Gradient, "", "")
+	c := parseColor(colorSpec, pal.Primary)
 
 	var coloredFilled string
 	if useGrad {
@@ -302,5 +312,5 @@ func runStreamProgress(in io.Reader, out io.Writer, total int, title, colorSpec,
 	}
 
 	fmt.Fprint(ttyOut, "\r\033[2K")
-	renderPillBadge(ttyOut, "PASS", namedColors["green"], title, fmt.Sprintf("%d items in %s", count, formatDuration(time.Since(start))))
+	renderPillBadge(ttyOut, "PASS", activePalette().Pass, title, fmt.Sprintf("%d items in %s", count, formatDuration(time.Since(start))))
 }

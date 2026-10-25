@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-var version = "0.2.2"
+var version = "0.3.0"
 
 func main() {
 	code := runWithExit(os.Args[1:], os.Stdout, os.Stderr)
@@ -21,7 +21,34 @@ func run(args []string, out io.Writer) {
 	_ = runWithExit(args, out, out)
 }
 
-func runWithExit(args []string, out io.Writer, errOut io.Writer) int {
+// extractGlobalThemeFlag strips --theme <name> from args and sets cliThemeOverride.
+func extractGlobalThemeFlag(args []string) []string {
+	cliThemeOverride = ""
+	var filtered []string
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if a == "--" {
+			filtered = append(filtered, args[i:]...)
+			break
+		}
+		if a == "--theme" && i+1 < len(args) {
+			cliThemeOverride = args[i+1]
+			i++
+			continue
+		}
+		if strings.HasPrefix(a, "--theme=") {
+			cliThemeOverride = strings.TrimPrefix(a, "--theme=")
+			continue
+		}
+		filtered = append(filtered, a)
+	}
+	return filtered
+}
+
+func runWithExit(rawArgs []string, out io.Writer, errOut io.Writer) int {
+	activeConfig = loadUserConfig()
+	args := extractGlobalThemeFlag(rawArgs)
+
 	if len(args) < 1 {
 		printHelp(out)
 		return 0
@@ -29,6 +56,7 @@ func runWithExit(args []string, out io.Writer, errOut io.Writer) int {
 
 	cmd := args[0]
 	rest := args[1:]
+	pal := activePalette()
 
 	switch cmd {
 	case "-v", "--version", "version":
@@ -38,6 +66,32 @@ func runWithExit(args []string, out io.Writer, errOut io.Writer) int {
 	case "-h", "--help", "help":
 		printHelp(out)
 		return 0
+
+	case "themes":
+		renderThemesCatalog(out)
+		return 0
+
+	case "theme":
+		if len(rest) == 0 || rest[0] == "list" {
+			renderThemesCatalog(out)
+			return 0
+		}
+		target := strings.ToLower(strings.TrimSpace(rest[0]))
+		if target == "preview" && len(rest) > 1 {
+			cliThemeOverride = strings.ToLower(strings.TrimSpace(rest[1]))
+			renderDemo(out)
+			return 0
+		}
+		if err := setConfigKey("theme", target); err != nil {
+			renderPillBadge(out, "FAIL", pal.Fail, err.Error(), "")
+			return 1
+		}
+		p := activePalette()
+		renderPillBadge(out, "PASS", p.Pass, fmt.Sprintf("Default theme set to %q", target), configFilePath())
+		return 0
+
+	case "config":
+		return handleConfigCommand(out, rest)
 
 	case "banner", "big":
 		opts := parseBannerFlags(rest)
@@ -51,22 +105,22 @@ func runWithExit(args []string, out io.Writer, errOut io.Writer) int {
 
 	case "ok", "pass", "success":
 		msg, meta := parseBadgeFlags(rest)
-		renderPillBadge(out, "PASS", namedColors["green"], msg, meta)
+		renderPillBadge(out, "PASS", pal.Pass, msg, meta)
 		return 0
 
 	case "warn", "warning":
 		msg, meta := parseBadgeFlags(rest)
-		renderPillBadge(out, "WARN", namedColors["yellow"], msg, meta)
+		renderPillBadge(out, "WARN", pal.Warn, msg, meta)
 		return 0
 
 	case "err", "error", "fail":
 		msg, meta := parseBadgeFlags(rest)
-		renderPillBadge(out, "FAIL", namedColors["red"], msg, meta)
+		renderPillBadge(out, "FAIL", pal.Fail, msg, meta)
 		return 0
 
 	case "info":
 		msg, meta := parseBadgeFlags(rest)
-		renderPillBadge(out, "INFO", namedColors["blue"], msg, meta)
+		renderPillBadge(out, "INFO", pal.Info, msg, meta)
 		return 0
 
 	case "step":
@@ -123,16 +177,14 @@ func runWithExit(args []string, out io.Writer, errOut io.Writer) int {
 
 	default:
 		renderBox(out, BoxOptions{
-			Text:     strings.Join(args, " "),
-			Border:   "rounded",
-			Gradient: "cyber",
+			Text: strings.Join(args, " "),
 		})
 		return 0
 	}
 }
 
 func parseBannerFlags(args []string) BannerOptions {
-	opts := BannerOptions{Font: "block"}
+	var opts BannerOptions
 	var pos []string
 	for i := 0; i < len(args); i++ {
 		a := args[i]
@@ -172,7 +224,7 @@ func parseBannerFlags(args []string) BannerOptions {
 }
 
 func parseBoxFlags(args []string) BoxOptions {
-	opts := BoxOptions{Border: "rounded"}
+	var opts BoxOptions
 	var pos []string
 	for i := 0; i < len(args); i++ {
 		a := args[i]
@@ -436,7 +488,7 @@ func parseProgressFlags(args []string) (int, string, string, string) {
 }
 
 func parseSpinFlags(args []string) SpinOptions {
-	opts := SpinOptions{Style: "dots"}
+	var opts SpinOptions
 	var pos []string
 	for i := 0; i < len(args); i++ {
 		a := args[i]
@@ -465,33 +517,33 @@ func parseSpinFlags(args []string) SpinOptions {
 }
 
 func renderDemo(out io.Writer) {
+	pal := activePalette()
 	renderBanner(out, BannerOptions{
 		Text:     "ZSPLASH",
 		Font:     "block",
-		Gradient: "cyber",
-		Subtitle: "Reactive Zsh & CLI Text Decoration Utility (v" + version + ")",
+		Subtitle: fmt.Sprintf("Reactive Zsh & CLI Text Utility (v%s | Theme: %s)", version, currentThemeName()),
 		Frame:    true,
 	})
 	fmt.Fprintln(out)
 
-	renderStep(out, "1", "4", "Crisp Unicode Block Fonts (compact, block, line)", "", "cyber")
+	renderStep(out, "1", "5", "Crisp Unicode Block Fonts (Solid by Default)", "", "")
 	fmt.Fprintln(out)
-	renderBanner(out, BannerOptions{Text: "COMPACT 2-ROW", Font: "compact", Gradient: "ember"})
-	renderBanner(out, BannerOptions{Text: "LINE FONT", Font: "line", Gradient: "matrix"})
+	renderBanner(out, BannerOptions{Text: "COMPACT 2-ROW", Font: "compact", Color: "secondary"})
+	renderBanner(out, BannerOptions{Text: "LINE FONT", Font: "line", Color: "pass"})
 	fmt.Fprintln(out)
 	renderCodeBlock(out, "zsh: banners", []string{
-		`zsp banner "ZSPLASH" --font block --gradient cyber --frame`,
-		`zsp banner "COMPACT 2-ROW" --font compact --gradient ember`,
-		`zsp banner "LINE FONT" --font line --gradient matrix`,
+		`zsp banner "ZSPLASH" --font block --frame`,
+		`zsp banner "COMPACT 2-ROW" --font compact --color secondary`,
+		`zsp banner "LINE FONT" --font line --color pass`,
 	})
 	fmt.Fprintln(out)
 
-	renderStep(out, "2", "4", "Inverted Pill Badges & Metadata", "", "cyber")
+	renderStep(out, "2", "5", "Inverted Pill Badges & Metadata", "", "")
 	fmt.Fprintln(out)
-	renderPillBadge(out, "PASS", namedColors["green"], "Database schema verified", "42ms")
-	renderPillBadge(out, "INFO", namedColors["blue"], "Worker pool initialized", "8 threads")
-	renderPillBadge(out, "WARN", namedColors["yellow"], "Rate limit at 85% capacity", "throttling")
-	renderPillBadge(out, "FAIL", namedColors["red"], "Upstream webhook timeout", "exit 1")
+	renderPillBadge(out, "PASS", pal.Pass, "Database schema verified", "42ms")
+	renderPillBadge(out, "INFO", pal.Info, "Worker pool initialized", "8 threads")
+	renderPillBadge(out, "WARN", pal.Warn, "Rate limit at 85% capacity", "throttling")
+	renderPillBadge(out, "FAIL", pal.Fail, "Upstream webhook timeout", "exit 1")
 	fmt.Fprintln(out)
 	renderCodeBlock(out, "zsh: badges", []string{
 		`zsp ok   "Database schema verified"   --meta "42ms"`,
@@ -501,56 +553,86 @@ func renderDemo(out io.Writer) {
 	})
 	fmt.Fprintln(out)
 
-	renderStep(out, "3", "4", "Boxes, Key-Value Cards & Trees", "", "cyber")
+	renderStep(out, "3", "5", "Boxes, Key-Value Cards & Trees", "", "")
 	fmt.Fprintln(out)
-	renderBox(out, BoxOptions{Text: "Deployment complete", Title: "Prod", Border: "double", Gradient: "ember"})
+	renderBox(out, BoxOptions{Text: "Deployment complete", Title: "Prod", Border: "double"})
 	fmt.Fprintln(out)
-	renderKV(out, "Release Target", "", "cyber", []string{
+	renderKV(out, "Release Target", "", "", []string{
 		"Binary", "zsplash (zsp)",
-		"Branch", "main",
+		"Active Theme", currentThemeName(),
 		"Terminal Width", fmt.Sprintf("%d cols", detectTermWidth()),
 	})
 	fmt.Fprintln(out)
-	renderTree(out, "Preflight Checks", []string{"Config valid", "Migrations clean"}, "cyan")
+	renderTree(out, "Preflight Checks", []string{"Config valid", "Migrations clean"}, "")
 	fmt.Fprintln(out)
 	renderCodeBlock(out, "zsh: structured layout", []string{
-		`zsp box "Deployment complete" --title "Prod" --border double --gradient ember`,
-		`zsp kv --title "Release Target" "Binary" "zsplash (zsp)" "Branch" "main"`,
+		`zsp box "Deployment complete" --title "Prod" --border double`,
+		`zsp kv --title "Release Target" "Binary" "zsplash (zsp)" "Active Theme" "` + currentThemeName() + `"`,
 		`zsp tree --title "Preflight Checks" "Config valid" "Migrations clean"`,
 	})
 	fmt.Fprintln(out)
 
-	renderStep(out, "4", "4", "Async Spinners & Half-Cell Progress Bars", "", "cyber")
+	renderStep(out, "4", "5", "Async Spinners & Half-Cell Progress Bars", "", "")
 	fmt.Fprintln(out)
-	renderPillBadge(out, "PASS", namedColors["green"], "Querying database...", "142ms")
-	renderBar(out, BarOptions{Current: 78, Total: 100, Label: "Deploying shards", Gradient: "cyber"})
+	renderPillBadge(out, "PASS", pal.Pass, "Querying database...", "142ms")
+	renderBar(out, BarOptions{Current: 78, Total: 100, Label: "Deploying shards"})
 	fmt.Fprintln(out)
 	renderCodeBlock(out, "zsh: async & progress", []string{
 		`zsp spin "Querying database..." --persist -- psql -c "SELECT 1"`,
-		`zsp bar 78 100 "Deploying shards" --gradient cyber`,
+		`zsp bar 78 100 "Deploying shards"`,
+	})
+	fmt.Fprintln(out)
+
+	renderStep(out, "5", "5", "Built-in Color Palettes (NES, SNES, Dracula, Nord...) & Defaults", "", "")
+	fmt.Fprintln(out)
+	for _, tName := range []string{"nes", "snes", "gameboy", "dracula", "nord", "amber"} {
+		t := builtinThemes[tName]
+		swatches := fmt.Sprintf("%s██%s %s██%s %s██%s %s██%s %s██%s %s██%s",
+			t.Primary.fgANSI(), ansiReset(),
+			t.Secondary.fgANSI(), ansiReset(),
+			t.Pass.fgANSI(), ansiReset(),
+			t.Warn.fgANSI(), ansiReset(),
+			t.Fail.fgANSI(), ansiReset(),
+			t.Info.fgANSI(), ansiReset(),
+		)
+		fmt.Fprintf(out, "  %s%s%-11s%s %s  %s%s%s\n",
+			ansiBold(), t.Primary.fgANSI(), tName, ansiReset(),
+			swatches, ansiDim(), t.Description, ansiReset())
+	}
+	fmt.Fprintln(out)
+	renderCodeBlock(out, "zsh: themes & defaults", []string{
+		`zsp themes`,
+		`zsp demo --theme nes`,
+		`zsp theme nes`,
+		`zsp config set banner.font compact`,
+		`zsp config set color.primary "#FC7460"`,
 	})
 }
 
 func printHelp(out io.Writer) {
 	renderBanner(out, BannerOptions{
-		Text:     "ZSPLASH",
-		Font:     "compact",
-		Gradient: "cyber",
+		Text: "ZSPLASH",
+		Font: "compact",
 	})
-	fmt.Fprintf(out, "%szsplash (zsp) v%s%s: Reactive CLI & Zsh Text Utility\n\n", ansiBold(), version, ansiReset())
+	fmt.Fprintf(out, "%szsplash (zsp) v%s%s: Reactive CLI & Zsh Text Utility (Active theme: %s)\n\n",
+		ansiBold(), version, ansiReset(), currentThemeName())
 	fmt.Fprintln(out, "Usage:")
-	fmt.Fprintln(out, "  zsp banner <text> [--font block|compact|line] [--gradient cyber|ember|ocean|matrix|gold] [--frame]")
-	fmt.Fprintln(out, "  zsp box <text> [--title <t>] [--footer <f>] [--border rounded|double|heavy|ascii] [--gradient <g>]")
+	fmt.Fprintln(out, "  zsp banner <text> [--font block|compact|line] [--color <c>] [--gradient <g>] [--frame]")
+	fmt.Fprintln(out, "  zsp box <text> [--title <t>] [--footer <f>] [--border rounded|double|heavy|ascii] [--color <c>]")
 	fmt.Fprintln(out, "  zsp ok|warn|err|info <text> [--meta <detail>]")
-	fmt.Fprintln(out, "  zsp step <curr> <total> <title> [--gradient <g>]")
-	fmt.Fprintln(out, "  zsp rule [label] [--gradient <g>] [--color <c>]")
+	fmt.Fprintln(out, "  zsp step <curr> <total> <title> [--color <c>]")
+	fmt.Fprintln(out, "  zsp rule [label] [--color <c>]")
 	fmt.Fprintln(out, "  zsp kv [--title <t>] <key1> <val1> [<key2> <val2> ...]")
 	fmt.Fprintln(out, "  zsp cmd <shell command>")
+	fmt.Fprintln(out, "  zsp code [--title <t>] <line1> <line2> ...")
 	fmt.Fprintln(out, "  zsp tree [--title <t>] <item1> <item2> ...")
-	fmt.Fprintln(out, "  zsp style <text> [--fg <c>] [--bg <c>] [--gradient <g>] [--bold] [--italic] [--underline]")
+	fmt.Fprintln(out, "  zsp style <text> [--fg <c>] [--bg <c>] [--bold] [--italic] [--underline]")
 	fmt.Fprintln(out, "  zsp spin <title> [--style dots|pulse|meter|line] [--persist] -- <cmd> [args...]")
-	fmt.Fprintln(out, "  zsp bar <curr> <total> [label] [--in-place|-r] [--gradient <g>]")
+	fmt.Fprintln(out, "  zsp bar <curr> <total> [label] [--in-place|-r] [--color <c>]")
 	fmt.Fprintln(out, "  zsp progress [--total <n>] [--title <t>] (reads lines from stdin)")
-	fmt.Fprintln(out, "  zsp demo           Run full visual showcase")
+	fmt.Fprintln(out, "  zsp themes         List all 10 built-in color palettes (nes, snes, dracula, nord, etc.)")
+	fmt.Fprintln(out, "  zsp theme <name>   Set your persistent default color palette")
+	fmt.Fprintln(out, "  zsp config         Show or override persistent defaults (zsp config set <key> <val>)")
+	fmt.Fprintln(out, "  zsp demo           Run full visual showcase (try: zsp demo --theme nes)")
 	fmt.Fprintln(out, "  zsp --version      Show version info")
 }

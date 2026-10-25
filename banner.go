@@ -167,15 +167,19 @@ func renderBanner(out io.Writer, opts BannerOptions) {
 	termWidth := detectTermWidth()
 	font := strings.ToLower(strings.TrimSpace(opts.Font))
 	if font == "" {
+		font = activeConfig.BannerFont
+	}
+	if font == "" {
 		font = "block"
 	}
 
-	gradName := opts.Gradient
-	if gradName == "" && opts.Color == "" && opts.FromHex == "" && opts.ToHex == "" {
-		gradName = "cyber"
+	pal := activePalette()
+	colorSpec := opts.Color
+	if colorSpec == "" {
+		colorSpec = activeConfig.BannerColor
 	}
-	grad, useGrad := resolveGradient(gradName, opts.FromHex, opts.ToHex)
-	solidColor := parseColor(opts.Color, namedColors["cyan"])
+	grad, useGrad := resolveGradient(opts.Gradient, opts.FromHex, opts.ToHex)
+	solidColor := parseColor(colorSpec, pal.Primary)
 
 	// Split words onto multiple banner chunks if the rendered width exceeds terminal width.
 	words := strings.Fields(text)

@@ -32,15 +32,48 @@ zsp demo
 
 ### 2. Crisp "Anti-Figlet" Block Banners (`zsp banner`)
 
-Render high-contrast Unicode block typography in 3 built-in fonts (`block`, `compact`, `line`) with smooth 24-bit TrueColor gradients (`cyber`, `ember`, `ocean`, `sunset`, `matrix`, `gold`, `mono`):
+Render high-contrast Unicode block typography in 3 built-in fonts (`block`, `compact`, `line`). Solid theme colors are used by default; opt into 24-bit TrueColor gradients anytime with `--gradient`:
 
 ```zsh
-zsp banner "DEPLOY" --font block --gradient cyber --frame --sub "Production Pipeline"
-zsp banner "FAST" --font compact --gradient ember
-zsp banner "ARCHITECT" --font line --gradient matrix
+# Solid color (default uses your active theme's primary color):
+zsp banner "DEPLOY" --font block --frame --sub "Production Pipeline"
+
+# Explicit solid color or NES palette color:
+zsp banner "8BIT" --font compact --color nes-red
+
+# Opt-in TrueColor gradient (cyber, ember, ocean, sunset, matrix, gold, mono):
+zsp banner "ARCHITECT" --font line --gradient cyber
 ```
 
-### 3. Inverted Pill Badges (`zsp ok`, `zsp warn`, `zsp err`, `zsp info`)
+### 3. Color Palettes & Persistent Defaults (`zsp themes`, `zsp theme`, `zsp config`)
+
+`zsplash` ships with 10 built-in color palettes:
+- **`nes`**: Nintendo Entertainment System (`Ricoh 2C02 PPU` hardware palette: `#E40058`, `#0088F8`, `#00A800`, `#F8B800`, `#FC7460`, `#3CBCFC`)
+- **`snes`**: Super Nintendo 16-bit palette
+- **`gameboy`**: Original DMG-01 4-shade olive Dot Matrix greens
+- **`modern`** (default): Crisp solid cyan, violet, and emerald
+- **`dracula`**, **`catppuccin`**, **`nord`**, **`gruvbox`**, **`tokyonight`**, **`amber`**
+
+```zsh
+# Browse all built-in palettes with live color swatches:
+zsp themes
+
+# Preview any palette on the visual showcase without saving:
+zsp demo --theme nes
+
+# Set your persistent default theme (saved to ~/.config/zsplash/config.json):
+zsp theme nes
+
+# Override individual component defaults or semantic colors:
+zsp config set banner.font compact
+zsp config set box.border double
+zsp config set spin.style dots
+zsp config set color.primary "#FC7460"
+zsp config list
+zsp config reset
+```
+
+### 4. Inverted Pill Badges (`zsp ok`, `zsp warn`, `zsp err`, `zsp info`)
 
 ```zsh
 zsp ok "Database schema verified" --meta "42ms"
@@ -49,17 +82,17 @@ zsp warn "Rate limit approaching" --meta "85%"
 zsp err "Connection timed out" --meta "exit 1"
 ```
 
-### 4. Step Dividers, Horizontal Rules, Key-Value Cards & Command Previews
+### 5. Step Dividers, Horizontal Rules, Key-Value Cards & Command Previews
 
 ```zsh
 zsp step 2 5 "Migrating database"
-zsp rule "ARTIFACTS" --gradient cyber
+zsp rule "ARTIFACTS"
 zsp kv --title "Deploy Target" "Environment" "prod" "Branch" "main" "Host" "10.0.4.12"
 zsp cmd "docker build --platform linux/amd64 -t api:latest ."
 zsp tree --title "Preflight Checks" "Auth token valid" "Cluster reachable" "Migrations clean"
 ```
 
-### 5. Async Spinners & Progress Bars in Zsh Scripts
+### 6. Async Spinners & Progress Bars in Zsh Scripts
 
 #### Wrap a Slow Command with `zsp spin`
 `zsp spin` animates directly on `/dev/tty` (or `stderr`), leaving `stdout` untouched so you can capture command output into a Zsh variable while showing a live spinner:

@@ -130,12 +130,32 @@ func TestDemo(t *testing.T) {
 		"zsh: async & progress",
 		"zsh: themes & defaults",
 		`zsp banner "ZSPLASH"`,
+		`zsp ok   "Database schema verified"   --meta "42ms"`,
 		`zsp kv --title "Release Target"`,
 		`zsp bar 78 100`,
 		`zsp theme nes`,
 	} {
 		if !strings.Contains(out, expected) {
 			t.Errorf("expected demo output to contain %q, got:\n%s", expected, out)
+		}
+	}
+
+	// Verify every framed block in demo has a flush right border
+	inCodeBlock := false
+	expectedWidth := 0
+	for _, line := range strings.Split(out, "\n") {
+		if strings.HasPrefix(line, "  ╭─ zsh:") {
+			inCodeBlock = true
+			expectedWidth = visibleLen(line)
+			continue
+		}
+		if inCodeBlock {
+			if visibleLen(line) != expectedWidth {
+				t.Errorf("code block border misalignment: expected width %d, got %d on line %q", expectedWidth, visibleLen(line), line)
+			}
+			if strings.HasPrefix(line, "  ╰") {
+				inCodeBlock = false
+			}
 		}
 	}
 }

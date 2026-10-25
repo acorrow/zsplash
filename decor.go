@@ -343,26 +343,54 @@ func renderKV(out io.Writer, title, colorSpec, gradSpec string, pairs []string) 
 	})
 }
 
-// styleCommandTokens returns a syntax-highlighted command line string using the active theme.
+// styleCommandTokens returns a syntax-highlighted command line string while preserving exact spacing.
 func styleCommandTokens(cmdText string) string {
 	pal := activePalette()
-	tokens := tokenizeCommand(cmdText)
-	var styled []string
-	for i, tok := range tokens {
+	var out strings.Builder
+	var tok strings.Builder
+	var quote rune
+	tokIdx := 0
+
+	flushToken := func() {
+		if tok.Len() == 0 {
+			return
+		}
+		t := tok.String()
+		tok.Reset()
 		switch {
-		case i == 0:
-			styled = append(styled, ansiBold()+pal.Pass.fgANSI()+tok+ansiReset())
-		case i == 1 && !strings.HasPrefix(tok, "-") && !strings.HasPrefix(tok, "\""):
-			styled = append(styled, ansiBold()+pal.Secondary.fgANSI()+tok+ansiReset())
-		case strings.HasPrefix(tok, "-"):
-			styled = append(styled, pal.Warn.fgANSI()+tok+ansiReset())
-		case strings.HasPrefix(tok, "\"") || strings.HasPrefix(tok, "'"):
-			styled = append(styled, pal.Text.fgANSI()+tok+ansiReset())
+		case tokIdx == 0:
+			out.WriteString(ansiBold() + pal.Pass.fgANSI() + t + ansiReset())
+		case tokIdx == 1 && !strings.HasPrefix(t, "-") && !strings.HasPrefix(t, "\""):
+			out.WriteString(ansiBold() + pal.Secondary.fgANSI() + t + ansiReset())
+		case strings.HasPrefix(t, "-"):
+			out.WriteString(pal.Warn.fgANSI() + t + ansiReset())
+		case strings.HasPrefix(t, "\"") || strings.HasPrefix(t, "'"):
+			out.WriteString(pal.Text.fgANSI() + t + ansiReset())
 		default:
-			styled = append(styled, tok)
+			out.WriteString(t)
+		}
+		tokIdx++
+	}
+
+	for _, r := range cmdText {
+		switch {
+		case quote != 0:
+			tok.WriteRune(r)
+			if r == quote {
+				quote = 0
+			}
+		case r == '"' || r == '\'':
+			quote = r
+			tok.WriteRune(r)
+		case r == ' ' || r == '\t':
+			flushToken()
+			out.WriteRune(r)
+		default:
+			tok.WriteRune(r)
 		}
 	}
-	return strings.Join(styled, " ")
+	flushToken()
+	return out.String()
 }
 
 // renderCmd formats a single shell command preview with a left gutter and syntax-highlighted tokens.
@@ -426,36 +454,6 @@ func renderCodeBlock(out io.Writer, title string, lines []string) {
 			borderColor.fgANSI(), ansiReset())
 	}
 	fmt.Fprintf(out, "%s%s%s\n", borderColor.fgANSI(), botLine, ansiReset())
-}
-
-// tokenizeCommand splits a command string while keeping quoted segments together.
-func tokenizeCommand(s string) []string {
-	var tokens []string
-	var current strings.Builder
-	var quote rune
-	for _, r := range s {
-		switch {
-		case quote != 0:
-			current.WriteRune(r)
-			if r == quote {
-				quote = 0
-			}
-		case r == '"' || r == '\'':
-			quote = r
-			current.WriteRune(r)
-		case r == ' ' || r == '\t':
-			if current.Len() > 0 {
-				tokens = append(tokens, current.String())
-				current.Reset()
-			}
-		default:
-			current.WriteRune(r)
-		}
-	}
-	if current.Len() > 0 {
-		tokens = append(tokens, current.String())
-	}
-	return tokens
 }
 
 // renderTree renders a clean Unicode tree/checklist from a list of items.

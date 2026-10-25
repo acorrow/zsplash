@@ -278,3 +278,51 @@ func TestDocsAndSchemaAndSubcommandHelp(t *testing.T) {
 		}
 	}
 }
+
+func TestSecurityHardening(t *testing.T) {
+	// 1. Escape sequence and control character sanitization (OSC 52, CSI, CR, NUL, DEL, C1)
+	hostile := "safe\x1b]52;c;ZWNobyBoYWNrZWQ=\x07\x1b[2J\r\x00\x7f\u009btext"
+	var buf bytes.Buffer
+	run([]string{"ok", hostile, "--meta", "\x1b]0;pwn\x0742ms"}, &buf)
+	out := buf.String()
+	if strings.Contains(out, "\x1b]52;") || strings.Contains(out, "\x1b[2J") || strings.Contains(out, "\x1b]0;") || strings.Contains(out, "\x00") || strings.Contains(out, "\x7f") {
+		t.Fatalf("expected hostile OSC/CSI/C0 sequences to be stripped from output, got: %q", out)
+	}
+	if !strings.Contains(stripANSI(out), "safetext") {
+		t.Fatalf("expected sanitized text 'safetext' in output, got: %q", stripANSI(out))
+	}
+
+	// Verify truncateVisible strips escapes even when string is shorter than maxRunes
+	shortHostile := "hi\x1b]52;c;abc\x07"
+	if got := truncateVisible(shortHostile, 50); got != "hi" {
+		t.Fatalf("expected truncateVisible to strip escapes on short string, got: %q", got)
+	}
+
+	// 2. ZSPLASH_CONFIG refuses to delete or overwrite a non-config file (e.g. .zshrc)
+	fakeZshrc := filepath.Join(t.TempDir(), ".zshrc")
+	if err := os.WriteFile(fakeZshrc, []byte("export PATH=/usr/bin:$PATH\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ZSPLASH_CONFIG", fakeZshrc)
+	buf.Reset()
+	code := runWithExit([]string{"config", "reset"}, &buf, &buf)
+	if code == 0 {
+		t.Fatalf("expected non-zero exit when resetting a non-config file")
+	}
+	if _, err := os.Stat(fakeZshrc); err != nil {
+		t.Fatalf("expected non-config file %q to NOT be deleted: %v", fakeZshrc, err)
+	}
+	buf.Reset()
+	code = runWithExit([]string{"config", "set", "theme", "nes"}, &buf, &buf)
+	if code == 0 {
+		t.Fatalf("expected non-zero exit when overwriting a non-config file")
+	}
+
+	// 3. Extreme widths are safely clamped
+	t.Setenv("ZSPLASH_WIDTH", "2000000000")
+	buf.Reset()
+	run([]string{"bar", "5", "10", "Test", "--width", "2000000000"}, &buf)
+	if len(buf.String()) > 2000 {
+		t.Fatalf("expected width to be clamped, got output length %d", len(buf.String()))
+	}
+}

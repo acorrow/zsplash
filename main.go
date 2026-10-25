@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-var version = "0.5.2"
+var version = "0.6.0"
 
 func main() {
 	code := runWithExit(os.Args[1:], os.Stdout, os.Stderr)
@@ -24,12 +24,17 @@ func run(args []string, out io.Writer) {
 // extractGlobalThemeFlag strips --theme <name> from args and sets cliThemeOverride.
 func extractGlobalThemeFlag(args []string) []string {
 	cliThemeOverride = ""
+	rawOutputEnabled = false
 	var filtered []string
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		if a == "--" {
 			filtered = append(filtered, args[i:]...)
 			break
+		}
+		if a == "--raw" {
+			rawOutputEnabled = true
+			continue
 		}
 		if (a == "--theme" || a == "-T") && i+1 < len(args) {
 			cliThemeOverride = args[i+1]
@@ -177,8 +182,7 @@ func runWithExit(rawArgs []string, out io.Writer, errOut io.Writer) int {
 
 	case "progress":
 		total, title, colorSpec, gradSpec := parseProgressFlags(rest)
-		runStreamProgress(os.Stdin, errOut, total, title, colorSpec, gradSpec)
-		return 0
+		return runStreamProgress(os.Stdin, errOut, total, title, colorSpec, gradSpec)
 
 	case "spin":
 		opts := parseSpinFlags(rest)

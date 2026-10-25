@@ -119,6 +119,7 @@ func buildCLISpec() CLISpec {
 		Summary: "Fast, reactive CLI utility for Zsh and shell scripts to render colorful banners, boxes, status badges, phase headers, key-value cards, command previews, spinners, and progress bars.",
 		GlobalFlags: []FlagSpec{
 			flg("-T", "--theme", "<theme>", themeOrder, "modern", "theme", "Temporarily apply a built-in color palette for this command."),
+			flg("", "--raw", "", nil, "false", "", "Allow raw control characters and escape sequences in user-supplied text without sanitization."),
 			flg("-h", "--help", "", nil, "", "", "Show overview help or subcommand spec (`zsp <cmd> --help`)."),
 			flg("-v", "--version", "", nil, "", "", "Print version string and exit."),
 		},

@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"fmt"
 	"io"
 	"math"
@@ -70,7 +69,8 @@ type BannerOptions struct {
 }
 
 func renderBanner(out io.Writer, opts BannerOptions) {
-	text := strings.ToUpper(strings.TrimSpace(opts.Text))
+	opts.Subtitle = sanitizeText(opts.Subtitle, false)
+	text := strings.ToUpper(strings.TrimSpace(sanitizeText(opts.Text, false)))
 	if text == "" {
 		text = "ZSPLASH"
 	}
@@ -243,9 +243,18 @@ var borderStyles = map[string]BorderGlyphs{
 type BoxOptions struct {
 	Text, Title, Footer, Border, Color, Gradient, FromHex, ToHex string
 	Width                                                        int
+	preformatted                                                 bool
 }
 
 func renderBox(out io.Writer, opts BoxOptions) {
+	opts.Title = sanitizeText(opts.Title, false)
+	opts.Footer = sanitizeText(opts.Footer, false)
+	if !opts.preformatted {
+		opts.Text = sanitizeText(opts.Text, true)
+	}
+	if opts.Width > maxTermCols {
+		opts.Width = maxTermCols
+	}
 	termWidth := detectTermWidth()
 	maxBoxWidth := termWidth - 2
 	if opts.Width > 0 && opts.Width < maxBoxWidth {
@@ -336,7 +345,9 @@ func renderBox(out io.Writer, opts BoxOptions) {
 
 func renderPillBadge(out io.Writer, label string, pillColor RGB, text string, meta string) {
 	termWidth := detectTermWidth()
-	cleanLabel := strings.TrimSpace(label)
+	cleanLabel := strings.TrimSpace(sanitizeText(label, false))
+	text = sanitizeText(text, false)
+	meta = sanitizeText(meta, false)
 	pill := fmt.Sprintf("[%s]", cleanLabel)
 	if !noColorEnabled() {
 		pill = fmt.Sprintf("%s%s\033[38;2;15;20;28m %s %s", ansiBold(), pillColor.bgANSI(), cleanLabel, ansiReset())
@@ -363,6 +374,9 @@ func renderPillBadge(out io.Writer, label string, pillColor RGB, text string, me
 }
 
 func renderStep(out io.Writer, current, total, title, colorSpec, gradSpec string) {
+	current = sanitizeText(current, false)
+	total = sanitizeText(total, false)
+	title = sanitizeText(title, false)
 	barWidth := detectTermWidth() - 2
 	if barWidth > 76 {
 		barWidth = 76
@@ -400,6 +414,10 @@ func renderStep(out io.Writer, current, total, title, colorSpec, gradSpec string
 }
 
 func renderRule(out io.Writer, label, colorSpec, gradSpec string, width int) {
+	label = sanitizeText(label, false)
+	if width > maxTermCols {
+		width = maxTermCols
+	}
 	target := detectTermWidth() - 2
 	if width > 0 && width < target {
 		target = width
@@ -434,6 +452,7 @@ func renderKV(out io.Writer, title, colorSpec, gradSpec string, pairs []string) 
 	if len(pairs) == 0 {
 		return
 	}
+	title = sanitizeText(title, false)
 	maxCardWidth := detectTermWidth() - 2
 	if maxCardWidth > 68 {
 		maxCardWidth = 68
@@ -445,9 +464,9 @@ func renderKV(out io.Writer, title, colorSpec, gradSpec string, pairs []string) 
 	var items []kvPair
 	maxKey, maxVal := 0, 0
 	for i := 0; i < len(pairs); i += 2 {
-		k, v := pairs[i], ""
+		k, v := sanitizeText(pairs[i], false), ""
 		if i+1 < len(pairs) {
-			v = pairs[i+1]
+			v = sanitizeText(pairs[i+1], false)
 		}
 		if visibleLen(k) > maxKey {
 			maxKey = visibleLen(k)
@@ -481,7 +500,7 @@ func renderKV(out io.Writer, title, colorSpec, gradSpec string, pairs []string) 
 		formattedLines = append(formattedLines, fmt.Sprintf("%s%s%s %s%s%s %s%s%s",
 			c.fgANSI(), it.k, ansiReset(), ansiDim(), strings.Repeat(".", dots), ansiReset(), ansiBold()+pal.Text.fgANSI(), it.v, ansiReset()))
 	}
-	renderBox(out, BoxOptions{Text: strings.Join(formattedLines, "\n"), Title: title, Border: activeConfig.BoxBorder, Color: colorSpec, Gradient: gradSpec})
+	renderBox(out, BoxOptions{Text: strings.Join(formattedLines, "\n"), Title: title, Border: activeConfig.BoxBorder, Color: colorSpec, Gradient: gradSpec, preformatted: true})
 }
 
 func styleCommandTokens(cmdText string) string {
@@ -532,13 +551,14 @@ func styleCommandTokens(cmdText string) string {
 
 func renderCmd(out io.Writer, cmdText string) {
 	pal := activePalette()
-	fmt.Fprintf(out, "  %s┃%s %s▸%s %s\n", pal.Primary.fgANSI(), ansiReset(), pal.Secondary.fgANSI(), ansiReset(), styleCommandTokens(cmdText))
+	fmt.Fprintf(out, "  %s┃%s %s▸%s %s\n", pal.Primary.fgANSI(), ansiReset(), pal.Secondary.fgANSI(), ansiReset(), styleCommandTokens(sanitizeText(cmdText, false)))
 }
 
 func renderCodeBlock(out io.Writer, title string, lines []string) {
 	if len(lines) == 0 {
 		return
 	}
+	title = sanitizeText(title, false)
 	maxBoxWidth := detectTermWidth() - 4
 	if maxBoxWidth < 20 {
 		maxBoxWidth = 20
@@ -550,7 +570,7 @@ func renderCodeBlock(out io.Writer, title string, lines []string) {
 	innerWidth := visibleLen(title) + 4
 	var styledLines []string
 	for _, l := range lines {
-		styled := styleCommandTokens(truncateVisible(l, maxInner))
+		styled := styleCommandTokens(truncateVisible(sanitizeText(l, false), maxInner))
 		styledLines = append(styledLines, styled)
 		if visibleLen(styled) > innerWidth {
 			innerWidth = visibleLen(styled)
@@ -579,6 +599,7 @@ func renderCodeBlock(out io.Writer, title string, lines []string) {
 func renderTree(out io.Writer, title string, items []string, colorSpec string) {
 	pal := activePalette()
 	c := parseColor(colorSpec, pal.Primary)
+	title = sanitizeText(title, false)
 	if title != "" {
 		fmt.Fprintf(out, "%s%s▸ %s%s\n", ansiBold(), c.fgANSI(), title, ansiReset())
 	}
@@ -587,7 +608,7 @@ func renderTree(out io.Writer, title string, items []string, colorSpec string) {
 		if i == len(items)-1 {
 			branch = "╰─"
 		}
-		fmt.Fprintf(out, "  %s%s%s %s●%s %s\n", ansiDim(), branch, ansiReset(), pal.Pass.fgANSI(), ansiReset(), item)
+		fmt.Fprintf(out, "  %s%s%s %s●%s %s\n", ansiDim(), branch, ansiReset(), pal.Pass.fgANSI(), ansiReset(), sanitizeText(item, false))
 	}
 }
 
@@ -597,6 +618,7 @@ type StyleOptions struct {
 }
 
 func renderStyle(out io.Writer, opts StyleOptions) {
+	opts.Text = sanitizeText(opts.Text, true)
 	if grad, ok := resolveGradient(opts.Gradient, opts.FromHex, opts.ToHex); ok {
 		fmt.Fprintln(out, applyGradientLine(opts.Text, grad, opts.Bold))
 		return
@@ -665,20 +687,19 @@ func runSpinner(stdout, stderr io.Writer, opts SpinOptions) int {
 		colorSpec = activeConfig.SpinColor
 	}
 	c := parseColor(colorSpec, pal.Primary)
-	title := strings.TrimSpace(opts.Title)
+	title := strings.TrimSpace(sanitizeText(opts.Title, false))
 	if title == "" {
 		title = "Working..."
 	}
 
 	start := time.Now()
 	doneCh := make(chan error, 1)
-	var cmdStderr bytes.Buffer
 	var cmd *exec.Cmd
 
 	if len(opts.Command) > 0 {
 		cmd = exec.Command(opts.Command[0], opts.Command[1:]...) // #nosec G204
 		cmd.Stdout = stdout
-		cmd.Stderr = &cmdStderr
+		cmd.Stderr = stderr
 		cmd.Stdin = os.Stdin
 		if err := cmd.Start(); err != nil {
 			renderPillBadge(ttyOut, "FAIL", pal.Fail, title, err.Error())
@@ -718,7 +739,12 @@ func runSpinner(stdout, stderr io.Writer, opts SpinOptions) int {
 		select {
 		case <-sigCh:
 			if cmd != nil && cmd.Process != nil {
-				_ = cmd.Process.Kill()
+				_ = cmd.Process.Signal(syscall.SIGTERM)
+				select {
+				case <-doneCh:
+				case <-time.After(150 * time.Millisecond):
+					_ = cmd.Process.Kill()
+				}
 			}
 			restoreTerminal()
 			renderPillBadge(ttyOut, "INT", pal.Warn, title, "interrupted")
@@ -728,11 +754,10 @@ func runSpinner(stdout, stderr io.Writer, opts SpinOptions) int {
 			elapsed := formatDuration(time.Since(start))
 			if err != nil {
 				renderPillBadge(ttyOut, "FAIL", pal.Fail, title, elapsed)
-				if cmdStderr.Len() > 0 {
-					fmt.Fprint(stderr, cmdStderr.String())
-				}
 				if exitErr, ok := err.(*exec.ExitError); ok {
-					return exitErr.ExitCode()
+					if code := exitErr.ExitCode(); code > 0 {
+						return code
+					}
 				}
 				return 1
 			}
@@ -792,9 +817,9 @@ func formatProgressBar(opts BarOptions) string {
 		if maxLabel < 10 {
 			maxLabel = 10
 		}
-		labelPrefix = truncateVisible(opts.Label, maxLabel) + " "
+		labelPrefix = truncateVisible(sanitizeText(opts.Label, false), maxLabel) + " "
 	}
-	barCells := opts.Width
+	barCells := clampWidth(opts.Width, 0, maxTermCols)
 	if barCells <= 0 {
 		barCells = termWidth - visibleLen(labelPrefix) - visibleLen(statsSuffix) - 4
 		if barCells > 42 {
@@ -847,17 +872,19 @@ func renderBar(out io.Writer, opts BarOptions) {
 	}
 }
 
-func runStreamProgress(in io.Reader, out io.Writer, total int, title, colorSpec, gradSpec string) {
+func runStreamProgress(in io.Reader, out io.Writer, total int, title, colorSpec, gradSpec string) int {
 	ttyOut, closeTTY := openTTYWriter(out)
 	defer closeTTY()
 	if total <= 0 {
 		total = 100
 	}
+	title = sanitizeText(title, false)
 	if title == "" {
 		title = "Processing"
 	}
 	start := time.Now()
 	scanner := bufio.NewScanner(in)
+	scanner.Buffer(make([]byte, 64*1024), 10*1024*1024)
 	count := 0
 	renderBar(ttyOut, BarOptions{Current: 0, Total: total, Label: title, Color: colorSpec, Gradient: gradSpec, InPlace: true})
 	for scanner.Scan() {
@@ -868,5 +895,10 @@ func runStreamProgress(in io.Reader, out io.Writer, total int, title, colorSpec,
 		renderBar(ttyOut, BarOptions{Current: count, Total: total, Label: title, Color: colorSpec, Gradient: gradSpec, InPlace: true})
 	}
 	fmt.Fprint(ttyOut, "\r\033[2K")
+	if err := scanner.Err(); err != nil {
+		renderPillBadge(ttyOut, "FAIL", activePalette().Fail, title, err.Error())
+		return 1
+	}
 	renderPillBadge(ttyOut, "PASS", activePalette().Pass, title, fmt.Sprintf("%d items in %s", count, formatDuration(time.Since(start))))
+	return 0
 }

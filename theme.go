@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,21 +13,68 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 )
 
 const (
-	reset     = "\033[0m"
-	bold      = "\033[1m"
-	dim       = "\033[2m"
-	italic    = "\033[3m"
-	underline = "\033[4m"
+	reset       = "\033[0m"
+	bold        = "\033[1m"
+	dim         = "\033[2m"
+	italic      = "\033[3m"
+	underline   = "\033[4m"
+	maxTermCols = 500
 )
 
-var ansiRegex = regexp.MustCompile(`\x1b\[[0-9;?]*[a-zA-Z]`)
+// ansiRegex matches CSI, OSC (BEL or ST terminated), DCS/SOS/PM/APC, and 2-byte ESC sequences.
+var ansiRegex = regexp.MustCompile(`\x1b(?:\[[0-9:;<=>?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[PX^_][^\x1b]*\x1b\\|[@-Z\\-_])`)
+
+var rawOutputEnabled bool
+var cachedWidth int
+var cachedWidthAt time.Time
 
 func stripANSI(s string) string { return ansiRegex.ReplaceAllString(s, "") }
-func visibleLen(s string) int   { return utf8.RuneCountInString(stripANSI(s)) }
+
+// sanitizeText removes terminal escape sequences and C0/DEL/C1 control characters from user input
+// unless --raw is explicitly enabled.
+func sanitizeText(s string, allowNewline bool) string {
+	if rawOutputEnabled {
+		return s
+	}
+	cleaned := stripANSI(s)
+	var b strings.Builder
+	b.Grow(len(cleaned))
+	for _, r := range cleaned {
+		switch {
+		case r == '\n':
+			if allowNewline {
+				b.WriteRune('\n')
+			} else {
+				b.WriteRune(' ')
+			}
+		case r == '\t':
+			b.WriteString("  ")
+		case r < 0x20 || r == 0x7f || (r >= 0x80 && r <= 0x9f):
+			continue
+		default:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+func visibleLen(s string) int { return utf8.RuneCountInString(sanitizeText(s, true)) }
+
+func clampWidth(w, minW, maxW int) int {
+	if w < minW {
+		return minW
+	}
+	if w > maxW {
+		return maxW
+	}
+	return w
+}
+
 func noColorEnabled() bool {
 	_, ok := os.LookupEnv("NO_COLOR")
 	return ok || os.Getenv("TERM") == "dumb"
@@ -54,31 +102,44 @@ func detectTermWidth() int {
 	for _, envName := range []string{"ZSPLASH_WIDTH", "COLUMNS"} {
 		if v := strings.TrimSpace(os.Getenv(envName)); v != "" {
 			if n, err := strconv.Atoi(v); err == nil && n >= 20 {
-				return n
+				return clampWidth(n, 20, maxTermCols)
 			}
 		}
 	}
+	if cachedWidth >= 20 && time.Since(cachedWidthAt) < 250*time.Millisecond {
+		return cachedWidth
+	}
+	cols := 80
 	if runtime.GOOS != "windows" {
-		if tty, err := os.Open("/dev/tty"); err == nil {
-			defer func() { _ = tty.Close() }()
-			cmd := exec.Command("stty", "size")
-			cmd.Stdin = tty
-			if out, err := cmd.Output(); err == nil {
-				if parts := strings.Fields(strings.TrimSpace(string(out))); len(parts) == 2 {
-					if cols, err := strconv.Atoi(parts[1]); err == nil && cols >= 20 {
-						return cols
+		sttyPath := ""
+		for _, candidate := range []string{"/bin/stty", "/usr/bin/stty"} {
+			if st, err := os.Stat(candidate); err == nil && !st.IsDir() {
+				sttyPath = candidate
+				break
+			}
+		}
+		if sttyPath != "" {
+			if tty, err := os.Open("/dev/tty"); err == nil {
+				defer func() { _ = tty.Close() }()
+				cmd := exec.Command(sttyPath, "size") // #nosec G204
+				cmd.Stdin = tty
+				if out, err := cmd.Output(); err == nil {
+					if parts := strings.Fields(strings.TrimSpace(string(out))); len(parts) == 2 {
+						if n, err := strconv.Atoi(parts[1]); err == nil && n >= 20 {
+							cols = clampWidth(n, 20, maxTermCols)
+						}
 					}
 				}
 			}
 		}
 	}
-	return 80
+	cachedWidth = cols
+	cachedWidthAt = time.Now()
+	return cols
 }
 
 func wrapText(text string, maxWidth int) []string {
-	if maxWidth < 10 {
-		maxWidth = 10
-	}
+	maxWidth = clampWidth(maxWidth, 10, maxTermCols)
 	var result []string
 	for _, raw := range strings.Split(text, "\n") {
 		if visibleLen(raw) <= maxWidth {
@@ -105,6 +166,7 @@ func wrapText(text string, maxWidth int) []string {
 }
 
 func padRight(s string, targetWidth int) string {
+	targetWidth = clampWidth(targetWidth, 0, maxTermCols)
 	if vLen := visibleLen(s); vLen < targetWidth {
 		return s + strings.Repeat(" ", targetWidth-vLen)
 	}
@@ -115,9 +177,9 @@ func truncateVisible(s string, maxRunes int) string {
 	if maxRunes <= 0 {
 		return ""
 	}
-	runes := []rune(stripANSI(s))
+	runes := []rune(sanitizeText(s, false))
 	if len(runes) <= maxRunes {
-		return s
+		return string(runes)
 	}
 	if maxRunes <= 1 {
 		return string(runes[:maxRunes])
@@ -333,14 +395,50 @@ func configFilePath() string {
 	if home, err := os.UserHomeDir(); err == nil && home != "" {
 		return filepath.Join(home, ".config", "zsplash", "config.json")
 	}
-	return "zsplash-config.json"
+	return ""
+}
+
+// validateExistingConfigFile ensures that if path already exists on disk, it is a valid zsplash JSON config
+// (preventing accidental overwrite or deletion of arbitrary files via ZSPLASH_CONFIG).
+func validateExistingConfigFile(path string) error {
+	if path == "" {
+		return fmt.Errorf("could not resolve config path ($HOME and $ZSPLASH_CONFIG are unset)")
+	}
+	info, err := os.Stat(path)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if info.IsDir() || info.Size() > 64*1024 {
+		return fmt.Errorf("refusing to modify non-config path %q", path)
+	}
+	data, err := os.ReadFile(filepath.Clean(path)) // #nosec G304
+	if err != nil {
+		return err
+	}
+	if len(bytes.TrimSpace(data)) == 0 {
+		return nil
+	}
+	var probe UserConfig
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&probe); err != nil {
+		return fmt.Errorf("refusing to modify %q: existing file is not a valid zsplash config", path)
+	}
+	return nil
 }
 
 func loadUserConfig() UserConfig {
 	cfg := UserConfig{Colors: make(map[string]string)}
-	path := filepath.Clean(configFilePath())
-	if data, err := os.ReadFile(path); err == nil { // #nosec G304
-		_ = json.Unmarshal(data, &cfg)
+	if rawPath := configFilePath(); rawPath != "" {
+		path := filepath.Clean(rawPath)
+		if info, err := os.Stat(path); err == nil && !info.IsDir() && info.Size() <= 64*1024 {
+			if data, err := os.ReadFile(path); err == nil { // #nosec G304
+				_ = json.Unmarshal(data, &cfg)
+			}
+		}
 	}
 	if cfg.Colors == nil {
 		cfg.Colors = make(map[string]string)
@@ -352,7 +450,11 @@ func loadUserConfig() UserConfig {
 }
 
 func saveUserConfig(cfg UserConfig) error {
-	path := filepath.Clean(configFilePath())
+	rawPath := configFilePath()
+	if err := validateExistingConfigFile(rawPath); err != nil {
+		return err
+	}
+	path := filepath.Clean(rawPath)
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return err
 	}
@@ -452,9 +554,16 @@ func handleConfigCommand(out io.Writer, args []string) int {
 		fmt.Fprintln(out, configFilePath())
 		return 0
 	case "reset":
+		rawPath := configFilePath()
+		if rawPath != "" {
+			if err := validateExistingConfigFile(rawPath); err != nil {
+				renderPillBadge(out, "FAIL", activePalette().Fail, err.Error(), "")
+				return 1
+			}
+			_ = os.Remove(filepath.Clean(rawPath))
+		}
 		activeConfig = UserConfig{Colors: make(map[string]string)}
-		_ = os.Remove(configFilePath())
-		renderPillBadge(out, "PASS", activePalette().Pass, "Configuration reset to defaults", configFilePath())
+		renderPillBadge(out, "PASS", activePalette().Pass, "Configuration reset to defaults", rawPath)
 		return 0
 	case "set":
 		if len(args) < 3 {

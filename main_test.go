@@ -172,19 +172,26 @@ func TestSolidDefaultAndNESTheme(t *testing.T) {
 		t.Fatalf("expected solid modern primary color (0;245;212) by default, got: %q", rawModern)
 	}
 
-	// Passing --theme nes switches to the NES hardware palette (#E40058 -> 228;0;88)
+	// Passing --theme nes switches to the NES console palette (#E60012 -> 230;0;18)
 	buf.Reset()
 	run([]string{"--theme", "nes", "banner", "NES"}, &buf)
 	rawNES := buf.String()
-	if !strings.Contains(rawNES, "38;2;228;0;88m") {
-		t.Fatalf("expected solid NES primary color (228;0;88) with --theme nes, got: %q", rawNES)
+	if !strings.Contains(rawNES, "38;2;230;0;18m") {
+		t.Fatalf("expected solid NES primary color (230;0;18) with --theme nes, got: %q", rawNES)
 	}
 
-	// Listing themes includes nes and other templates
+	// Passing --theme xbox switches to the Xbox jewel green palette (#18E618 -> 24;230;24)
+	buf.Reset()
+	run([]string{"--theme", "xbox", "banner", "XBOX"}, &buf)
+	if !strings.Contains(buf.String(), "38;2;24;230;24m") {
+		t.Fatalf("expected solid Xbox primary color (24;230;24) with --theme xbox, got: %q", buf.String())
+	}
+
+	// Listing themes includes nes, xbox, and other video game templates
 	buf.Reset()
 	run([]string{"themes"}, &buf)
 	themesOut := stripANSI(buf.String())
-	for _, th := range []string{"modern", "nes", "snes", "gameboy", "dracula", "catppuccin", "nord", "gruvbox", "tokyonight", "amber"} {
+	for _, th := range []string{"modern", "nes", "xbox", "snes", "n64", "gamecube", "gameboy", "ps1", "sega", "pipboy", "cyberpunk", "halo", "doom", "dracula", "catppuccin", "nord", "gruvbox", "tokyonight", "amber"} {
 		if !strings.Contains(themesOut, th) {
 			t.Errorf("expected themes list to include %q, got:\n%s", th, themesOut)
 		}
@@ -205,8 +212,8 @@ func TestConfigPersistenceAndOverrides(t *testing.T) {
 	// Verify banner now defaults to NES red without passing --theme
 	buf.Reset()
 	run([]string{"banner", "P1"}, &buf)
-	if !strings.Contains(buf.String(), "38;2;228;0;88m") {
-		t.Fatalf("expected persisted nes theme color (228;0;88), got: %q", buf.String())
+	if !strings.Contains(buf.String(), "38;2;230;0;18m") {
+		t.Fatalf("expected persisted nes theme color (230;0;18), got: %q", buf.String())
 	}
 
 	// Override box.border to double and color.primary to #112233 (17;34;51)
@@ -255,7 +262,7 @@ func TestDocsAndSchemaAndSubcommandHelp(t *testing.T) {
 	if err := json.Unmarshal(buf.Bytes(), &spec); err != nil {
 		t.Fatalf("expected valid JSON from `zsp docs --json`, got error: %v", err)
 	}
-	if spec.Name != "zsplash" || spec.Alias != "zsp" || len(spec.Commands) < 15 || len(spec.Themes) != 10 {
+	if spec.Name != "zsplash" || spec.Alias != "zsp" || len(spec.Commands) < 15 || len(spec.Themes) != 19 {
 		t.Fatalf("unexpected CLI JSON spec structure: commands=%d, themes=%d", len(spec.Commands), len(spec.Themes))
 	}
 

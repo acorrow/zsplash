@@ -146,13 +146,26 @@ type ThemePalette struct {
 	Primary, Secondary, Pass, Warn, Fail, Info, Muted, Text RGB
 }
 
-var themeOrder = []string{"modern", "nes", "snes", "gameboy", "dracula", "catppuccin", "nord", "gruvbox", "tokyonight", "amber"}
+var themeOrder = []string{
+	"modern", "nes", "xbox", "snes", "n64", "gamecube", "gameboy",
+	"ps1", "sega", "pipboy", "cyberpunk", "halo", "doom",
+	"dracula", "catppuccin", "nord", "gruvbox", "tokyonight", "amber",
+}
 
 var builtinThemes = map[string]ThemePalette{
 	"modern":     {"modern", "High-contrast crisp teal, sky blue, and emerald (Default)", RGB{0, 245, 212}, RGB{0, 187, 249}, RGB{46, 213, 115}, RGB{255, 165, 2}, RGB{255, 71, 87}, RGB{56, 189, 248}, RGB{120, 132, 158}, RGB{245, 246, 250}},
-	"nes":        {"nes", "Nintendo Entertainment System (Ricoh 2C02 PPU hardware palette)", RGB{228, 0, 88}, RGB{60, 188, 252}, RGB{88, 216, 84}, RGB{248, 184, 0}, RGB{216, 40, 0}, RGB{60, 188, 252}, RGB{124, 124, 124}, RGB{252, 252, 252}},
-	"snes":       {"snes", "Super Nintendo 16-bit lavender, periwinkle, and primary button colors", RGB{123, 104, 238}, RGB{178, 164, 255}, RGB{0, 200, 83}, RGB{255, 214, 0}, RGB{229, 57, 53}, RGB{30, 136, 229}, RGB{141, 141, 146}, RGB{244, 244, 246}},
-	"gameboy":    {"gameboy", "Nintendo Game Boy DMG-01 4-shade olive LCD phosphor green", RGB{155, 188, 15}, RGB{139, 172, 15}, RGB{155, 188, 15}, RGB{139, 172, 15}, RGB{48, 98, 48}, RGB{139, 172, 15}, RGB{48, 98, 48}, RGB{202, 220, 159}},
+	"nes":        {"nes", "NES Control Deck two-tone grey, A/B button red, charcoal, and Zapper orange", RGB{230, 0, 18}, RGB{184, 184, 184}, RGB{88, 216, 84}, RGB{255, 88, 0}, RGB{216, 40, 0}, RGB{255, 88, 0}, RGB{104, 104, 104}, RGB{236, 236, 236}},
+	"xbox":       {"xbox", "Xbox neon jewel green, energy lime, matte chassis charcoal, and Red Ring crimson", RGB{24, 230, 24}, RGB{155, 240, 11}, RGB{24, 230, 24}, RGB{255, 185, 0}, RGB{232, 17, 35}, RGB{166, 176, 166}, RGB{92, 102, 92}, RGB{242, 247, 242}},
+	"snes":       {"snes", "Super Nintendo deck grey, concave/convex purple & lavender, and 4-button accents", RGB{123, 104, 238}, RGB{178, 164, 255}, RGB{0, 200, 83}, RGB{255, 214, 0}, RGB{229, 57, 53}, RGB{30, 136, 229}, RGB{141, 141, 146}, RGB{244, 244, 246}},
+	"n64":        {"n64", "Nintendo 64 charcoal deck with A-blue, B-green, C-yellow, and Start-red buttons", RGB{43, 123, 255}, RGB{255, 208, 0}, RGB{0, 184, 72}, RGB{255, 208, 0}, RGB{230, 32, 32}, RGB{56, 136, 255}, RGB{110, 112, 117}, RGB{236, 238, 242}},
+	"gamecube":   {"gamecube", "GameCube Indigo purple, Spice Orange controller, teal A-button, and C-stick yellow", RGB{124, 111, 230}, RGB{255, 112, 0}, RGB{0, 200, 160}, RGB{255, 216, 0}, RGB{230, 30, 42}, RGB{140, 130, 240}, RGB{142, 146, 153}, RGB{242, 240, 255}},
+	"gameboy":    {"gameboy", "Game Boy DMG-01 4-shade olive LCD green, grey bezel, and maroon A/B buttons", RGB{155, 188, 15}, RGB{139, 172, 15}, RGB{155, 188, 15}, RGB{139, 172, 15}, RGB{154, 32, 82}, RGB{139, 172, 15}, RGB{123, 125, 123}, RGB{202, 220, 159}},
+	"ps1":        {"ps1", "PlayStation 1 battleship grey with Triangle green, Circle red, Cross blue, Square pink", RGB{88, 130, 250}, RGB{224, 130, 180}, RGB{0, 196, 154}, RGB{245, 176, 0}, RGB{240, 58, 62}, RGB{168, 174, 184}, RGB{112, 118, 128}, RGB{236, 239, 244}},
+	"sega":       {"sega", "Sega Genesis / Mega Drive matte black, Sonic cobalt blue, gold ring, and 16-bit red", RGB{30, 100, 255}, RGB{255, 215, 0}, RGB{0, 230, 118}, RGB{255, 215, 0}, RGB{229, 37, 33}, RGB{64, 144, 255}, RGB{104, 108, 115}, RGB{245, 247, 250}},
+	"pipboy":     {"pipboy", "Fallout Pip-Boy 3000 CRT phosphor green, Vault-Tec amber, and Rad Alert red", RGB{24, 255, 98}, RGB{16, 196, 76}, RGB{24, 255, 98}, RGB{255, 182, 66}, RGB{255, 59, 48}, RGB{20, 224, 86}, RGB{30, 107, 56}, RGB{200, 255, 216}},
+	"cyberpunk":  {"cyberpunk", "Night City cyber yellow, Kiroshi optics cyan, and Relic glitch crimson", RGB{252, 238, 10}, RGB{0, 240, 255}, RGB{0, 255, 159}, RGB{252, 238, 10}, RGB{255, 0, 60}, RGB{0, 240, 255}, RGB{122, 111, 155}, RGB{248, 249, 250}},
+	"halo":       {"halo", "UNSC Mjolnir Mark V olive drab, Sierra-117 gold visor, and Cortana holo-blue", RGB{120, 158, 78}, RGB{255, 168, 0}, RGB{72, 216, 255}, RGB{255, 168, 0}, RGB{255, 56, 40}, RGB{110, 158, 255}, RGB{90, 102, 80}, RGB{232, 240, 228}},
+	"doom":       {"doom", "UAC Hellfire blood red, molten Argent orange, Praetor green, and shotgun steel", RGB{230, 46, 0}, RGB{255, 136, 0}, RGB{92, 230, 92}, RGB{255, 196, 0}, RGB{255, 26, 26}, RGB{77, 166, 255}, RGB{110, 115, 123}, RGB{244, 237, 232}},
 	"dracula":    {"dracula", "Dracula dark theme with purple, pink, and neon green accents", RGB{189, 147, 249}, RGB{255, 121, 198}, RGB{80, 250, 123}, RGB{241, 250, 140}, RGB{255, 85, 85}, RGB{139, 233, 253}, RGB{98, 114, 164}, RGB{248, 248, 242}},
 	"catppuccin": {"catppuccin", "Catppuccin Mocha soothing pastel mauve, sapphire, and green", RGB{203, 166, 247}, RGB{245, 194, 231}, RGB{166, 227, 161}, RGB{249, 226, 175}, RGB{243, 139, 168}, RGB{137, 220, 235}, RGB{108, 112, 134}, RGB{205, 214, 244}},
 	"nord":       {"nord", "Arctic Nord frost blues and aurora borealis status colors", RGB{136, 192, 208}, RGB{129, 161, 193}, RGB{163, 190, 140}, RGB{235, 203, 139}, RGB{191, 97, 106}, RGB{94, 129, 172}, RGB{106, 118, 142}, RGB{236, 239, 244}},
@@ -165,9 +178,10 @@ var namedColors = map[string]RGB{
 	"cyan": {0, 245, 212}, "green": {46, 213, 115}, "yellow": {255, 165, 2}, "red": {255, 71, 87},
 	"magenta": {196, 113, 237}, "purple": {155, 93, 229}, "pink": {241, 91, 181}, "blue": {0, 187, 249},
 	"orange": {255, 123, 0}, "gold": {254, 228, 64}, "white": {245, 246, 250}, "gray": {130, 140, 160},
-	"nes-red": {228, 0, 88}, "nes-lava": {216, 40, 0}, "nes-blue": {60, 188, 252}, "nes-cobalt": {0, 120, 248},
-	"nes-green": {88, 216, 84}, "nes-gold": {248, 184, 0}, "nes-orange": {252, 152, 56},
-	"nes-magenta": {216, 0, 204}, "nes-teal": {0, 232, 216}, "nes-gray": {124, 124, 124},
+	"nes-red": {230, 0, 18}, "nes-zapper": {255, 88, 0}, "nes-grey": {184, 184, 184}, "nes-gray": {184, 184, 184},
+	"nes-darkgrey": {104, 104, 104}, "nes-black": {32, 32, 32}, "nes-lava": {216, 40, 0}, "nes-blue": {60, 188, 252},
+	"nes-cobalt": {0, 120, 248}, "nes-green": {88, 216, 84}, "nes-gold": {248, 184, 0}, "nes-orange": {255, 88, 0},
+	"xbox-green": {24, 230, 24}, "xbox-lime": {155, 240, 11}, "xbox-red": {232, 17, 35},
 }
 
 func parseLiteralColor(spec string, fallback RGB) RGB {
@@ -508,8 +522,8 @@ func renderThemesCatalog(out io.Writer) {
 			marker = pal.Pass.fgANSI() + "▸ " + ansiReset()
 		}
 		swatches := fmt.Sprintf("%s██%s %s██%s %s██%s %s██%s %s██%s %s██%s",
-			t.Primary.fgANSI(), ansiReset(), t.Secondary.fgANSI(), ansiReset(), t.Pass.fgANSI(), ansiReset(),
-			t.Warn.fgANSI(), ansiReset(), t.Fail.fgANSI(), ansiReset(), t.Info.fgANSI(), ansiReset())
+			t.Primary.fgANSI(), ansiReset(), t.Secondary.fgANSI(), ansiReset(), t.Warn.fgANSI(), ansiReset(),
+			t.Pass.fgANSI(), ansiReset(), t.Fail.fgANSI(), ansiReset(), t.Muted.fgANSI(), ansiReset())
 		fmt.Fprintf(out, "%s%s%s%s%s  %s  %s%s%s\n", marker, ansiBold(), t.Primary.fgANSI(), padRight(name, 12), ansiReset(), swatches, ansiDim(), t.Description, ansiReset())
 	}
 	fmt.Fprintln(out)

@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-var version = "0.4.1"
+var version = "0.5.0"
 
 func main() {
 	code := runWithExit(os.Args[1:], os.Stdout, os.Stderr)
@@ -542,12 +542,12 @@ func renderDemo(out io.Writer) {
 	renderStep(out, "1", "5", "Crisp Unicode Block Fonts (Solid by Default)", "", "")
 	fmt.Fprintln(out)
 	renderBanner(out, BannerOptions{Text: "COMPACT 2-ROW", Font: "compact", Color: "secondary"})
-	renderBanner(out, BannerOptions{Text: "LINE FONT", Font: "line", Color: "pass"})
+	renderBanner(out, BannerOptions{Text: "LINE FONT", Font: "line", Color: "warn"})
 	fmt.Fprintln(out)
 	renderCodeBlock(out, "zsh: banners", []string{
 		`zsp banner "ZSPLASH" --font block --frame`,
 		`zsp banner "COMPACT 2-ROW" --font compact --color secondary`,
-		`zsp banner "LINE FONT" --font line --color pass`,
+		`zsp banner "LINE FONT" --font line --color warn`,
 	})
 	fmt.Fprintln(out)
 
@@ -596,17 +596,17 @@ func renderDemo(out io.Writer) {
 	})
 	fmt.Fprintln(out)
 
-	renderStep(out, "5", "5", "Built-in Color Palettes (NES, SNES, Dracula, Nord...) & Defaults", "", "")
+	renderStep(out, "5", "5", "Video Game & Terminal Palettes (NES, Xbox, SNES, N64, Pip-Boy, DOOM...)", "", "")
 	fmt.Fprintln(out)
-	for _, tName := range []string{"nes", "snes", "gameboy", "dracula", "nord", "amber"} {
+	for _, tName := range []string{"nes", "xbox", "snes", "n64", "gamecube", "gameboy", "ps1", "sega", "pipboy", "cyberpunk", "halo", "doom"} {
 		t := builtinThemes[tName]
 		swatches := fmt.Sprintf("%s██%s %s██%s %s██%s %s██%s %s██%s %s██%s",
 			t.Primary.fgANSI(), ansiReset(),
 			t.Secondary.fgANSI(), ansiReset(),
-			t.Pass.fgANSI(), ansiReset(),
 			t.Warn.fgANSI(), ansiReset(),
+			t.Pass.fgANSI(), ansiReset(),
 			t.Fail.fgANSI(), ansiReset(),
-			t.Info.fgANSI(), ansiReset(),
+			t.Muted.fgANSI(), ansiReset(),
 		)
 		fmt.Fprintf(out, "  %s%s%-11s%s %s  %s%s%s\n",
 			ansiBold(), t.Primary.fgANSI(), tName, ansiReset(),
@@ -616,11 +616,10 @@ func renderDemo(out io.Writer) {
 	renderCodeBlock(out, "zsh: themes, defaults & docs", []string{
 		`zsp themes`,
 		`zsp demo --theme nes`,
+		`zsp demo --theme xbox`,
 		`zsp theme nes`,
 		`zsp config set banner.font compact`,
-		`zsp help spin`,
 		`zsp docs`,
-		`zsp docs --json`,
 	})
 }
 

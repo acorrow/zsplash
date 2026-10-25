@@ -45,7 +45,7 @@ find . -type f | zsp progress --total 100 --title "Indexing"
 
 ## Themes & Config
 
-Built-in palettes: `modern` (default), `nes`, `xbox`, `snes`, `n64`, `gamecube`, `gameboy`, `ps1`, `sega`, `pipboy`, `cyberpunk`, `halo`, `doom`, `dracula`, `catppuccin`, `nord`, `gruvbox`, `tokyonight`, `amber`.
+Built-in palettes: `modern` (default), `nes`, `snes`, `xbox`, `halo`, `gameboy`, `pipboy`, `dracula`, `catppuccin`, `nord`, `gruvbox`, `tokyonight`, `monokai`, `solarized`, `rosepine`, `everforest`, `kanagawa`, `synthwave`, `industrial`, `amber`.
 
 ```zsh
 zsp themes                            # list palettes

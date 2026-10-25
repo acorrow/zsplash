@@ -189,11 +189,11 @@ func TestSolidDefaultAndNESTheme(t *testing.T) {
 		t.Fatalf("expected solid Xbox primary color (24;230;24) with --theme xbox, got: %q", buf.String())
 	}
 
-	// Listing themes includes nes, xbox, and other video game templates
+	// Listing themes includes built-in palettes
 	buf.Reset()
 	run([]string{"themes"}, &buf)
 	themesOut := stripANSI(buf.String())
-	for _, th := range []string{"modern", "nes", "xbox", "snes", "n64", "gamecube", "gameboy", "ps1", "sega", "pipboy", "cyberpunk", "halo", "doom", "dracula", "catppuccin", "nord", "gruvbox", "tokyonight", "amber"} {
+	for _, th := range []string{"modern", "nes", "snes", "xbox", "halo", "gameboy", "pipboy", "dracula", "catppuccin", "nord", "gruvbox", "tokyonight", "monokai", "solarized", "rosepine", "everforest", "kanagawa", "synthwave", "industrial", "amber"} {
 		if !strings.Contains(themesOut, th) {
 			t.Errorf("expected themes list to include %q, got:\n%s", th, themesOut)
 		}
@@ -264,7 +264,7 @@ func TestDocsAndSchemaAndSubcommandHelp(t *testing.T) {
 	if err := json.Unmarshal(buf.Bytes(), &spec); err != nil {
 		t.Fatalf("expected valid JSON from `zsp docs --json`, got error: %v", err)
 	}
-	if spec.Name != "zsplash" || spec.Alias != "zsp" || len(spec.Commands) < 15 || len(spec.Themes) != 19 {
+	if spec.Name != "zsplash" || spec.Alias != "zsp" || len(spec.Commands) < 15 || len(spec.Themes) != 20 {
 		t.Fatalf("unexpected CLI JSON spec structure: commands=%d, themes=%d", len(spec.Commands), len(spec.Themes))
 	}
 

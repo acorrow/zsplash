@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-var version = "0.5.1"
+var version = "0.5.2"
 
 func main() {
 	code := runWithExit(os.Args[1:], os.Stdout, os.Stderr)
@@ -604,9 +604,9 @@ func renderDemo(out io.Writer) {
 	})
 	fmt.Fprintln(out)
 
-	renderStep(out, "5", "5", "Video Game & Terminal Palettes (NES, Xbox, SNES, N64, Pip-Boy, DOOM...)", "", "")
+	renderStep(out, "5", "5", "Built-in Color Palettes & Persistent Defaults", "", "")
 	fmt.Fprintln(out)
-	for _, tName := range []string{"nes", "xbox", "snes", "n64", "gamecube", "gameboy", "ps1", "sega", "pipboy", "cyberpunk", "halo", "doom"} {
+	for _, tName := range []string{"nes", "snes", "halo", "xbox", "dracula", "monokai", "rosepine", "everforest", "synthwave", "industrial"} {
 		t := builtinThemes[tName]
 		swatches := fmt.Sprintf("%s██%s %s██%s %s██%s %s██%s %s██%s %s██%s",
 			t.Primary.fgANSI(), ansiReset(),

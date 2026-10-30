@@ -28,9 +28,10 @@ zsp info "Workers ready"     --meta "8 threads"
 zsp warn "Rate limit 85%"    --meta "throttling"
 zsp err  "Webhook timed out" --meta "exit 1"
 
-# Layout, cards, tables, trees, and code blocks
+# Layout, prose, cards, tables, trees, and code blocks
 zsp step 1 3 "Migrating database"
 zsp box "All migrations applied" --title "DB" --border double
+zsp prose --eyebrow "RELEASE" --title "What Changed" "Run `zsp demo` with --theme nes or set $ZSPLASH_WIDTH." --tip "Pipe notes into zsp read."
 zsp kv --title "Target" "Env" "prod" "Branch" "main"
 zsp tsv --header "SERVICE\tSTATUS\tLATENCY" "api\thealthy\t12ms" "worker\tready\t4ms"
 printf "api\thealthy\t12ms\nworker\tready\t4ms\n" | zsp tsv --headers "SERVICE,STATUS,LATENCY"
@@ -53,6 +54,7 @@ find . -type f | zsp progress --total 100 --title "Indexing"
 | :--- | :--- | :--- | :--- |
 | `banner` (`big`) | `zsp banner <text> [flags]` | `-f, --font block\|compact\|line`<br>`-c, --color <color>`<br>`-g, --gradient <grad>`<br>`--from <#hex> --to <#hex>`<br>`--sub <text>`<br>`--frame` | 3-row block, 2-row compact, or 3-row box-drawing headline banner |
 | `box` | `zsp box <text> [flags]`<br>`zsp -- <text>` | `-t, --title <t>`<br>`--footer <f>`<br>`-b, --border rounded\|double\|heavy\|ascii`<br>`-c, --color <color>`<br>`-g, --gradient <grad>`<br>`-w, --width <cols>` | Word-wrapped callout box sized to terminal width (default subcommand when omitted) |
+| `prose` (`read`) | `zsp prose [flags] [paragraphs...]`<br>`<cmd> \| zsp read [flags]` | `-e, --eyebrow <label>`<br>`-t, --title <title>`<br>`--tip <text>` `--note <text>` `--warn <text>`<br>`-f, --file <path>`<br>`-w, --width <cols>`<br>`-c, --color <c>` `-g, --gradient <g>` | High-readability terminal prose capped at a 66-column measure with inline code/flag/env highlights, hanging bullets, and callout rails |
 | `ok` (`pass`, `success`)<br>`info`<br>`warn` (`warning`)<br>`err` (`fail`, `error`) | `zsp ok <msg> [--meta <detail>]` | `-m, --meta <detail>` | Inverted status pill badge (`PASS`, `INFO`, `WARN`, `FAIL`) with optional right-aligned dot-leader metadata |
 | `step` | `zsp step <curr> <total> <title>` | `-c, --color <color>`<br>`-g, --gradient <grad>` | Full-width phase divider (`━━━ [curr/total] ━━━`) and `▸ <title>` header |
 | `rule` (`hr`) | `zsp rule [label] [flags]` | `-c, --color <color>`<br>`-g, --gradient <grad>`<br>`-w, --width <cols>` | Horizontal divider line (`───`) with optional centered label |

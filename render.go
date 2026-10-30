@@ -355,6 +355,330 @@ func renderBox(out io.Writer, opts BoxOptions) {
 	}
 }
 
+type ProseOptions struct {
+	Title, Eyebrow, Tip, Note, Warn, File, Color, Gradient string
+	Width                                                  int
+	Paragraphs                                             []string
+}
+
+type proseBlock struct {
+	isBullet bool
+	text     string
+}
+
+func isASCIIAlpha(b byte) bool {
+	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z')
+}
+
+func isASCIIAlphaNum(b byte) bool {
+	return isASCIIAlpha(b) || (b >= '0' && b <= '9')
+}
+
+func isFlagToken(w string) bool {
+	w = strings.TrimLeft(w, "([\"'")
+	if strings.HasPrefix(w, "--") {
+		return len(w) >= 3 && isASCIIAlphaNum(w[2])
+	}
+	if strings.HasPrefix(w, "-") {
+		return len(w) >= 2 && isASCIIAlphaNum(w[1])
+	}
+	return false
+}
+
+func isEnvToken(w string) bool {
+	w = strings.TrimLeft(w, "([\"'")
+	return len(w) >= 2 && w[0] == '$' && (isASCIIAlpha(w[1]) || w[1] == '_')
+}
+
+func styleProseText(s string) string {
+	if noColorEnabled() {
+		return strings.Join(strings.Fields(s), " ")
+	}
+	pal := activePalette()
+	codeChipPrefix := "\033[48;2;30;41;59m" + ansiBold() + pal.Primary.fgANSI()
+
+	type spanPiece struct {
+		text   string
+		inCode bool
+	}
+	type wordToken struct {
+		pieces []spanPiece
+	}
+
+	var words []wordToken
+	var currWord wordToken
+	var buf strings.Builder
+	inCode := false
+
+	flushPiece := func() {
+		if buf.Len() > 0 {
+			currWord.pieces = append(currWord.pieces, spanPiece{text: buf.String(), inCode: inCode})
+			buf.Reset()
+		}
+	}
+	flushWord := func() {
+		flushPiece()
+		if len(currWord.pieces) > 0 {
+			words = append(words, currWord)
+			currWord = wordToken{}
+		}
+	}
+
+	runes := []rune(s)
+	for i := 0; i < len(runes); i++ {
+		r := runes[i]
+		if r == '`' {
+			if inCode {
+				flushPiece()
+				inCode = false
+				continue
+			}
+			hasClosing := false
+			for j := i + 1; j < len(runes); j++ {
+				if runes[j] == '`' {
+					hasClosing = true
+					break
+				}
+			}
+			if hasClosing {
+				flushPiece()
+				inCode = true
+				continue
+			}
+		}
+		if r == ' ' || r == '\t' || r == '\n' || r == '\r' {
+			flushWord()
+			continue
+		}
+		buf.WriteRune(r)
+	}
+	flushWord()
+
+	var styledWords []string
+	for _, w := range words {
+		var sb strings.Builder
+		for _, p := range w.pieces {
+			if p.inCode {
+				sb.WriteString(codeChipPrefix + p.text + ansiReset())
+			} else if isFlagToken(p.text) {
+				sb.WriteString(pal.Warn.fgANSI() + p.text + ansiReset())
+			} else if isEnvToken(p.text) {
+				sb.WriteString(pal.Secondary.fgANSI() + p.text + ansiReset())
+			} else {
+				sb.WriteString(pal.Text.fgANSI() + p.text + ansiReset())
+			}
+		}
+		styledWords = append(styledWords, sb.String())
+	}
+	return strings.Join(styledWords, " ")
+}
+
+func extractBulletItem(trimmed string) (string, bool) {
+	for _, prefix := range []string{"- ", "* ", "• "} {
+		if strings.HasPrefix(trimmed, prefix) {
+			return strings.TrimSpace(strings.TrimPrefix(trimmed, prefix)), true
+		}
+	}
+	return "", false
+}
+
+func parseProseBlocks(rawText string) []proseBlock {
+	var blocks []proseBlock
+	var paraLines []string
+
+	flushPara := func() {
+		if len(paraLines) > 0 {
+			blocks = append(blocks, proseBlock{
+				isBullet: false,
+				text:     strings.Join(paraLines, " "),
+			})
+			paraLines = nil
+		}
+	}
+
+	for _, line := range strings.Split(rawText, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			flushPara()
+			continue
+		}
+		if bulletText, ok := extractBulletItem(trimmed); ok {
+			flushPara()
+			blocks = append(blocks, proseBlock{
+				isBullet: true,
+				text:     bulletText,
+			})
+			continue
+		}
+		paraLines = append(paraLines, trimmed)
+	}
+	flushPara()
+	return blocks
+}
+
+func runProse(in io.Reader, out io.Writer, errOut io.Writer, opts ProseOptions) int {
+	pal := activePalette()
+	var rawText string
+
+	if opts.File != "" {
+		data, err := os.ReadFile(filepath.Clean(opts.File)) // #nosec G304
+		if err != nil {
+			renderPillBadge(errOut, "FAIL", pal.Fail, err.Error(), "")
+			return 1
+		}
+		rawText = string(data)
+	} else if len(opts.Paragraphs) > 0 {
+		expanded := make([]string, len(opts.Paragraphs))
+		for i, p := range opts.Paragraphs {
+			expanded[i] = strings.ReplaceAll(p, `\n`, "\n")
+		}
+		rawText = strings.Join(expanded, "\n\n")
+	} else if in != nil {
+		if f, ok := in.(*os.File); !ok || !isTerminal(f) {
+			var lines []string
+			scanner := bufio.NewScanner(in)
+			scanner.Buffer(make([]byte, 64*1024), 10*1024*1024)
+			for scanner.Scan() {
+				lines = append(lines, scanner.Text())
+			}
+			if err := scanner.Err(); err != nil {
+				renderPillBadge(errOut, "FAIL", pal.Fail, err.Error(), "")
+				return 1
+			}
+			rawText = strings.Join(lines, "\n")
+		}
+	}
+
+	renderProseText(out, rawText, opts)
+	return 0
+}
+
+func renderProse(out io.Writer, opts ProseOptions) {
+	expanded := make([]string, len(opts.Paragraphs))
+	for i, p := range opts.Paragraphs {
+		expanded[i] = strings.ReplaceAll(p, `\n`, "\n")
+	}
+	renderProseText(out, strings.Join(expanded, "\n\n"), opts)
+}
+
+func renderProseText(out io.Writer, rawText string, opts ProseOptions) {
+	eyebrow := strings.ToUpper(strings.TrimSpace(sanitizeText(opts.Eyebrow, false)))
+	title := strings.TrimSpace(sanitizeText(opts.Title, false))
+	tip := strings.TrimSpace(sanitizeText(opts.Tip, false))
+	note := strings.TrimSpace(sanitizeText(opts.Note, false))
+	warn := strings.TrimSpace(sanitizeText(opts.Warn, false))
+	bodyText := sanitizeText(rawText, true)
+
+	blocks := parseProseBlocks(bodyText)
+	if eyebrow == "" && title == "" && len(blocks) == 0 && tip == "" && note == "" && warn == "" {
+		return
+	}
+
+	maxMeasure := clampWidth(detectTermWidth()-4, 16, maxTermCols)
+	measure := 66
+	if opts.Width > 0 {
+		measure = opts.Width
+	}
+	measure = clampWidth(measure, 16, maxMeasure)
+
+	pal := activePalette()
+	grad, useGrad := resolveGradient(opts.Gradient, "", "")
+	c := parseColor(opts.Color, pal.Primary)
+
+	printedAny := false
+
+	if eyebrow != "" {
+		for i, el := range wrapText(eyebrow, clampWidth(measure-2, 10, maxTermCols)) {
+			prefix := "▸ "
+			if i > 0 {
+				prefix = "  "
+			}
+			fmt.Fprintf(out, "  %s%s%s%s%s\n", ansiBold(), pal.Secondary.fgANSI(), prefix, el, ansiReset())
+		}
+		printedAny = true
+	}
+
+	if title != "" {
+		titleLines := wrapText(title, measure)
+		ruleLen := 0
+		for _, tl := range titleLines {
+			if v := visibleLen(tl); v > ruleLen {
+				ruleLen = v
+			}
+			if useGrad {
+				fmt.Fprintf(out, "  %s\n", applyGradientLine(tl, grad, true))
+			} else {
+				fmt.Fprintf(out, "  %s%s%s%s\n", ansiBold(), c.fgANSI(), tl, ansiReset())
+			}
+		}
+		ruleLen = clampWidth(ruleLen, 4, measure)
+		rule := strings.Repeat("═", ruleLen)
+		if useGrad {
+			fmt.Fprintf(out, "  %s\n", applyGradientLine(rule, grad, false))
+		} else {
+			fmt.Fprintf(out, "  %s%s%s\n", c.fgANSI(), rule, ansiReset())
+		}
+		printedAny = true
+	}
+
+	if len(blocks) > 0 {
+		if printedAny {
+			fmt.Fprintln(out)
+		}
+		for i, blk := range blocks {
+			if i > 0 && !(blocks[i-1].isBullet && blk.isBullet) {
+				fmt.Fprintln(out)
+			}
+			if blk.isBullet {
+				styled := styleProseText(blk.text)
+				bLines := wrapText(styled, clampWidth(measure-2, 10, maxTermCols))
+				for j, bl := range bLines {
+					if j == 0 {
+						fmt.Fprintf(out, "  %s•%s %s\n", c.fgANSI(), ansiReset(), bl)
+					} else {
+						fmt.Fprintf(out, "    %s\n", bl)
+					}
+				}
+			} else {
+				styled := styleProseText(blk.text)
+				for _, pl := range wrapText(styled, measure) {
+					fmt.Fprintf(out, "  %s\n", pl)
+				}
+			}
+		}
+		printedAny = true
+	}
+
+	type calloutSpec struct {
+		label string
+		text  string
+		color RGB
+	}
+	callouts := []calloutSpec{
+		{"TIP", tip, pal.Pass},
+		{"NOTE", note, pal.Info},
+		{"WARN", warn, pal.Warn},
+	}
+	for _, co := range callouts {
+		if co.text == "" {
+			continue
+		}
+		if printedAny {
+			fmt.Fprintln(out)
+		}
+		styled := styleProseText(co.text)
+		cLines := wrapText(styled, clampWidth(measure-8, 10, maxTermCols))
+		for j, cl := range cLines {
+			if j == 0 {
+				fmt.Fprintf(out, "  %s%s┃ %s%s %s\n", ansiBold(), co.color.fgANSI(), padRight(co.label, 5), ansiReset(), cl)
+			} else {
+				fmt.Fprintf(out, "  %s%s┃%s       %s\n", ansiBold(), co.color.fgANSI(), ansiReset(), cl)
+			}
+		}
+		printedAny = true
+	}
+}
+
 func renderPillBadge(out io.Writer, label string, pillColor RGB, text string, meta string) {
 	termWidth := detectTermWidth()
 	cleanLabel := strings.TrimSpace(sanitizeText(label, false))

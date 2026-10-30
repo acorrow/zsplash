@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.8.0 (2026-10-30)
 
 - `prose`, `read`: added `zsp prose` (alias `zsp read`) for high-readability terminal typography from positional paragraphs, `--file <path>` (`-f`), or piped `stdin`.
   - Caps body copy to an ergonomic 66-column reading measure by default (`--width` / `-w` overrides) with a 2-space left margin and automatic reflow down to narrow 44-column terminals.

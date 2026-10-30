@@ -129,6 +129,10 @@ func runWithExit(rawArgs []string, out io.Writer, errOut io.Writer) int {
 		renderBox(out, opts)
 		return 0
 
+	case "prose", "read":
+		opts := parseProseFlags(rest)
+		return runProse(os.Stdin, out, errOut, opts)
+
 	case "ok", "pass", "success":
 		msg, meta := parseBadgeFlags(rest)
 		renderPillBadge(out, "PASS", pal.Pass, msg, meta)
@@ -355,6 +359,97 @@ func parseBoxFlags(args []string) BoxOptions {
 	opts.Text = strings.Join(pos, " ")
 	if opts.Text == "" {
 		opts.Text = "zsplash"
+	}
+	return opts
+}
+
+func parseProseFlags(args []string) ProseOptions {
+	var opts ProseOptions
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if a == "--" {
+			opts.Paragraphs = append(opts.Paragraphs, args[i+1:]...)
+			break
+		}
+		switch {
+		case a == "--title" || a == "-t":
+			if hasValueArg(args, i) {
+				opts.Title = args[i+1]
+				i++
+			}
+		case strings.HasPrefix(a, "--title="):
+			opts.Title = strings.TrimPrefix(a, "--title=")
+		case strings.HasPrefix(a, "-t="):
+			opts.Title = strings.TrimPrefix(a, "-t=")
+		case a == "--eyebrow" || a == "-e":
+			if hasValueArg(args, i) {
+				opts.Eyebrow = args[i+1]
+				i++
+			}
+		case strings.HasPrefix(a, "--eyebrow="):
+			opts.Eyebrow = strings.TrimPrefix(a, "--eyebrow=")
+		case strings.HasPrefix(a, "-e="):
+			opts.Eyebrow = strings.TrimPrefix(a, "-e=")
+		case a == "--tip":
+			if hasValueArg(args, i) {
+				opts.Tip = args[i+1]
+				i++
+			}
+		case strings.HasPrefix(a, "--tip="):
+			opts.Tip = strings.TrimPrefix(a, "--tip=")
+		case a == "--note":
+			if hasValueArg(args, i) {
+				opts.Note = args[i+1]
+				i++
+			}
+		case strings.HasPrefix(a, "--note="):
+			opts.Note = strings.TrimPrefix(a, "--note=")
+		case a == "--warn":
+			if hasValueArg(args, i) {
+				opts.Warn = args[i+1]
+				i++
+			}
+		case strings.HasPrefix(a, "--warn="):
+			opts.Warn = strings.TrimPrefix(a, "--warn=")
+		case a == "--file" || a == "-f":
+			if hasValueArg(args, i) {
+				opts.File = args[i+1]
+				i++
+			}
+		case strings.HasPrefix(a, "--file="):
+			opts.File = strings.TrimPrefix(a, "--file=")
+		case strings.HasPrefix(a, "-f="):
+			opts.File = strings.TrimPrefix(a, "-f=")
+		case a == "--width" || a == "-w":
+			if hasValueArg(args, i) {
+				opts.Width, _ = strconv.Atoi(args[i+1])
+				i++
+			}
+		case strings.HasPrefix(a, "--width="):
+			opts.Width, _ = strconv.Atoi(strings.TrimPrefix(a, "--width="))
+		case strings.HasPrefix(a, "-w="):
+			opts.Width, _ = strconv.Atoi(strings.TrimPrefix(a, "-w="))
+		case a == "--color" || a == "-c":
+			if hasValueArg(args, i) {
+				opts.Color = args[i+1]
+				i++
+			}
+		case strings.HasPrefix(a, "--color="):
+			opts.Color = strings.TrimPrefix(a, "--color=")
+		case strings.HasPrefix(a, "-c="):
+			opts.Color = strings.TrimPrefix(a, "-c=")
+		case a == "--gradient" || a == "-g":
+			if hasValueArg(args, i) {
+				opts.Gradient = args[i+1]
+				i++
+			}
+		case strings.HasPrefix(a, "--gradient="):
+			opts.Gradient = strings.TrimPrefix(a, "--gradient=")
+		case strings.HasPrefix(a, "-g="):
+			opts.Gradient = strings.TrimPrefix(a, "-g=")
+		default:
+			opts.Paragraphs = append(opts.Paragraphs, a)
+		}
 	}
 	return opts
 }
@@ -924,6 +1019,15 @@ func renderDemo(out io.Writer) {
 	fmt.Fprintln(out)
 	renderTree(out, "Preflight Checks", []string{"Config valid", "Migrations clean"}, "")
 	fmt.Fprintln(out)
+	renderProse(out, ProseOptions{
+		Eyebrow: "TYPOGRAPHY",
+		Title:   "Readable Terminal Copy",
+		Paragraphs: []string{
+			"Long lines are capped at a 66-column measure with inline `zsp prose` chips, `--theme` flags, and `$ZSPLASH_WIDTH` variables.",
+		},
+		Tip: "Pipe release notes into `zsp read` for instant formatting.",
+	})
+	fmt.Fprintln(out)
 	renderCmd(out, "docker build --tag app:latest .")
 	fmt.Fprintln(out)
 	renderCodeBlock(out, "zsh: structured layout & dividers", []string{
@@ -933,6 +1037,7 @@ func renderDemo(out io.Writer) {
 		`zsp kv --title "Release Target" "Binary" "zsplash (zsp)" "Active Theme" "` + currentThemeName() + `"`,
 		`zsp tsv --header "SERVICE\tSTATUS\tLATENCY" "api-gateway\thealthy\t12ms"`,
 		`zsp tree --title "Preflight Checks" "Config valid" "Migrations clean"`,
+		`zsp prose --eyebrow "TYPOGRAPHY" --title "Readable Copy" "Capped at 66 columns." --tip "Use zsp read"`,
 		`zsp cmd "docker build --tag app:latest ."`,
 	})
 	fmt.Fprintln(out)
@@ -985,6 +1090,7 @@ func printHelp(out io.Writer) {
 	fmt.Fprintln(out, "Usage:")
 	fmt.Fprintln(out, "  zsp banner <text> [--font block|compact|line] [--color <c>] [--gradient <g>] [--frame]")
 	fmt.Fprintln(out, "  zsp box <text> [--title <t>] [--footer <f>] [--border rounded|double|heavy|ascii] [--color <c>]")
+	fmt.Fprintln(out, "  zsp prose|read [paragraphs...] [--title <t>] [--eyebrow <e>] [--tip <text>] [--file <f>]")
 	fmt.Fprintln(out, "  zsp ok|warn|err|info <text> [--meta <detail>]")
 	fmt.Fprintln(out, "  zsp step <curr> <total> <title> [--color <c>]")
 	fmt.Fprintln(out, "  zsp rule [label] [--color <c>]")

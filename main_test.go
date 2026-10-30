@@ -739,3 +739,160 @@ func TestTSVTable(t *testing.T) {
 		t.Fatalf("expected '--header' after '--' to be rendered as cell text, got:\n%s", stripANSI(buf.String()))
 	}
 }
+
+func TestProse(t *testing.T) {
+	t.Setenv("ZSPLASH_CONFIG", filepath.Join(t.TempDir(), "config.json"))
+	t.Setenv("ZSPLASH_WIDTH", "120")
+
+	// 1. Eyebrow, title, ═ underline, wrapped paragraphs, inline backtick code spans, --flag tokens, and $ENV tokens
+	// 2. 66-column default measure cap on wide terminals (ZSPLASH_WIDTH=120: no visible line exceeds 68 columns including 2-space indent)
+	var buf bytes.Buffer
+	longPara := "Terminal output that stretches across ultra-wide windows is exhausting to scan. Use `zsp prose` with --width or $ZSPLASH_WIDTH to cap body copy to an ergonomic 66-column measure."
+	run([]string{
+		"prose",
+		"--eyebrow", "release notes",
+		"--title", "Readable Terminal Typography",
+		longPara,
+		`- First bullet item with inline ` + "`code`" + ` and --flag token\n- Second bullet item that wraps cleanly across multiple lines when the sentence is long enough to exceed the reading measure`,
+		"--tip", "Pipe markdown or release notes into `zsp read` for instant formatting across wide and narrow terminals.",
+		"--note", "Environment variables like $ZSPLASH_THEME and flags like --color are highlighted automatically.",
+		"--warn", "Never exceed the target reading measure even when the terminal window is 120 columns wide.",
+	}, &buf)
+
+	rawOut := buf.String()
+	plainOut := stripANSI(rawOut)
+
+	// Verify eyebrow (uppercased), title, and ═ underline
+	if !strings.Contains(plainOut, "  ▸ RELEASE NOTES") {
+		t.Fatalf("expected uppercase eyebrow '  ▸ RELEASE NOTES', got:\n%s", plainOut)
+	}
+	if !strings.Contains(plainOut, "  Readable Terminal Typography\n  ════════════════════════════") {
+		t.Fatalf("expected title with matching ═ underline, got:\n%s", plainOut)
+	}
+	// Verify backticks stripped in color mode and dark slate chip background + flag/env colors emitted
+	if strings.Contains(plainOut, "`zsp prose`") {
+		t.Fatalf("expected backticks to be stripped when color is enabled, got:\n%s", plainOut)
+	}
+	if !strings.Contains(rawOut, "\033[48;2;30;41;59m") {
+		t.Fatalf("expected inline code chip background escape in raw output, got:\n%q", rawOut)
+	}
+	pal := activePalette()
+	if !strings.Contains(rawOut, pal.Warn.fgANSI()+"--width"+ansiReset()) {
+		t.Fatalf("expected --width flag token to be colored with Warn role, got:\n%q", rawOut)
+	}
+	if !strings.Contains(rawOut, pal.Secondary.fgANSI()+"$ZSPLASH_WIDTH"+ansiReset()) {
+		t.Fatalf("expected $ZSPLASH_WIDTH env token to be colored with Secondary role, got:\n%q", rawOut)
+	}
+	// Verify hanging bullets and hanging callout rails
+	if !strings.Contains(plainOut, "  • First bullet item") || !strings.Contains(plainOut, "\n    ") {
+		t.Fatalf("expected hanging bullet list with '  • ' and 4-space continuation indent, got:\n%s", plainOut)
+	}
+	for _, rail := range []string{"  ┃ TIP   ", "  ┃ NOTE  ", "  ┃ WARN  ", "  ┃       "} {
+		if !strings.Contains(plainOut, rail) {
+			t.Fatalf("expected callout rail %q in output, got:\n%s", rail, plainOut)
+		}
+	}
+	// Verify 66-column default measure cap (max 68 visible columns with 2-space margin) on 120-col terminal
+	for i, line := range strings.Split(strings.TrimRight(plainOut, "\n"), "\n") {
+		if v := visibleLen(line); v > 68 {
+			t.Errorf("wide terminal line %d exceeded 68 visible columns (got %d): %q", i, v, line)
+		}
+	}
+
+	// 3. 44-column narrow terminal reflow (ZSPLASH_WIDTH=44: no visible line exceeds 44 columns)
+	t.Setenv("ZSPLASH_WIDTH", "44")
+	buf.Reset()
+	run([]string{
+		"read",
+		"--eyebrow", "narrow terminal check",
+		"--title", "Reflowing Headlines And Copy On A Forty Four Column Screen",
+		longPara,
+		"- Hanging bullet item that must wrap cleanly inside a forty-four column terminal without overflowing",
+		"--tip", "Callout rails also wrap cleanly within narrow 44-column terminal windows.",
+	}, &buf)
+	narrowPlain := stripANSI(buf.String())
+	for i, line := range strings.Split(strings.TrimRight(narrowPlain, "\n"), "\n") {
+		if v := visibleLen(line); v > 44 {
+			t.Errorf("44-col terminal line %d exceeded 44 visible columns (got %d): %q", i, v, line)
+		}
+	}
+
+	// 5. --file input, piped stdin input, and exit code 1 on missing --file
+	t.Setenv("ZSPLASH_WIDTH", "80")
+	proseFile := filepath.Join(t.TempDir(), "notes.txt")
+	if err := os.WriteFile(proseFile, []byte("First file paragraph with `code`.\n\n- Bullet from file\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	buf.Reset()
+	var errBuf bytes.Buffer
+	if code := runWithExit([]string{"prose", "--file", proseFile, "--title", "From File"}, &buf, &errBuf); code != 0 {
+		t.Fatalf("expected prose --file to exit 0, got %d (err: %s)", code, errBuf.String())
+	}
+	if !strings.Contains(stripANSI(buf.String()), "From File") || !strings.Contains(stripANSI(buf.String()), "• Bullet from file") {
+		t.Fatalf("expected file content and bullet in output, got:\n%s", stripANSI(buf.String()))
+	}
+
+	buf.Reset()
+	errBuf.Reset()
+	if code := runWithExit([]string{"prose", "--file", filepath.Join(t.TempDir(), "missing.txt")}, &buf, &errBuf); code != 1 {
+		t.Fatalf("expected prose with missing --file to exit 1, got %d", code)
+	}
+	if !strings.Contains(stripANSI(errBuf.String()), "FAIL") {
+		t.Fatalf("expected FAIL pill badge on errOut for missing file, got: %q", stripANSI(errBuf.String()))
+	}
+
+	buf.Reset()
+	errBuf.Reset()
+	stdinReader := strings.NewReader("Piped paragraph one.\n\nPiped paragraph two with --flag.\n")
+	if code := runProse(stdinReader, &buf, &errBuf, ProseOptions{Title: "Piped Input"}); code != 0 {
+		t.Fatalf("expected runProse from stdin reader to exit 0, got %d", code)
+	}
+	if !strings.Contains(stripANSI(buf.String()), "Piped paragraph two with --flag.") {
+		t.Fatalf("expected piped stdin content in output, got:\n%s", stripANSI(buf.String()))
+	}
+
+	// 6. NO_COLOR=1 output (zero \x1b escapes and preserved backticks)
+	t.Setenv("NO_COLOR", "1")
+	buf.Reset()
+	run([]string{"prose", "--eyebrow", "PLAIN", "--title", "No Color", "Run `zsp prose` with --width.", "--tip", "Plain tip"}, &buf)
+	noColorOut := buf.String()
+	if strings.Contains(noColorOut, "\x1b") {
+		t.Fatalf("expected zero ANSI escapes under NO_COLOR=1, got: %q", noColorOut)
+	}
+	if !strings.Contains(noColorOut, "`zsp prose`") {
+		t.Fatalf("expected backticks to be preserved under NO_COLOR=1, got:\n%s", noColorOut)
+	}
+	os.Unsetenv("NO_COLOR")
+
+	// 7. Escape sequence sanitization (\x1b[31m stripped unless zsp --raw prose is used) and "--" end-of-flags handling
+	buf.Reset()
+	run([]string{"prose", "--", "--title", "literal-arg\x1b]52;c;pwn\x07\x1b[31mred"}, &buf)
+	sanitizedOut := buf.String()
+	if strings.Contains(sanitizedOut, "\x1b]52;") || strings.Contains(sanitizedOut, "\x1b[31m") {
+		t.Fatalf("expected raw escape sequences to be stripped by default, got: %q", sanitizedOut)
+	}
+	if !strings.Contains(stripANSI(sanitizedOut), "--title") || !strings.Contains(stripANSI(sanitizedOut), "literal-argred") {
+		t.Fatalf("expected '--title' after '--' to be rendered as body text, got:\n%s", stripANSI(sanitizedOut))
+	}
+
+	buf.Reset()
+	run([]string{"--raw", "prose", "\x1b[31mraw-allowed\x1b[0m"}, &buf)
+	if !strings.Contains(buf.String(), "\x1b[31mraw-allowed\x1b[0m") {
+		t.Fatalf("expected 'zsp --raw prose' to preserve ANSI escapes, got: %q", buf.String())
+	}
+
+	// 8. zsp docs, zsp docs --json, zsp help prose, and zsp read --help
+	for _, args := range [][]string{{"help", "prose"}, {"prose", "--help"}, {"read", "--help"}, {"help", "read"}} {
+		buf.Reset()
+		run(args, &buf)
+		hOut := stripANSI(buf.String())
+		if !strings.Contains(hOut, "zsp prose") || !strings.Contains(hOut, "--eyebrow") || !strings.Contains(hOut, "--tip") {
+			t.Fatalf("args %v: expected prose command help with --eyebrow and --tip, got:\n%s", args, hOut)
+		}
+	}
+	buf.Reset()
+	run([]string{"docs"}, &buf)
+	if !strings.Contains(buf.String(), "### `zsp prose`") {
+		t.Fatalf("expected 'zsp docs' to include '### `zsp prose`'")
+	}
+}

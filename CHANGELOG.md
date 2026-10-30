@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- `prose`, `read`: added `zsp prose` (alias `zsp read`) for high-readability terminal typography from positional paragraphs, `--file <path>` (`-f`), or piped `stdin`.
+  - Caps body copy to an ergonomic 66-column reading measure by default (`--width` / `-w` overrides) with a 2-space left margin and automatic reflow down to narrow 44-column terminals.
+  - Supports `--eyebrow <label>` (`-e`) uppercase headers (`▸ <LABEL>`) and `--title <title>` (`-t`) headlines with a matching `═` underline, `--color` (`-c`), and `--gradient` (`-g`).
+  - Highlights inline backtick code spans (`` `code` ``) on a dark slate chip background (preserving backticks under `NO_COLOR`), `--flag` tokens in `warn`, and `$ENV` tokens in `secondary`, plus hanging-indent bullet lists (`- `, `* `, `• `) and `--tip`, `--note`, and `--warn` hanging callout rails.
+
 ## v0.7.0 (2026-10-25)
 
 - `tsv`, `table`: added `zsp tsv` (alias `zsp table`) to render aligned tabular TSV data from piped `stdin`, `--file <path>` (`-f`), or inline positional row arguments (`\t` and `\n` escapes expanded automatically).

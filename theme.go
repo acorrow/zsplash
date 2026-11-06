@@ -213,6 +213,7 @@ func (c RGB) bgANSI() string {
 	}
 	return fmt.Sprintf("\033[48;2;%d;%d;%dm", c.R, c.G, c.B)
 }
+func (c RGB) isDark() bool { return (299*c.R+587*c.G+114*c.B)/1000 < 140 }
 
 type ThemePalette struct {
 	Name, Description                                       string
@@ -224,29 +225,35 @@ var themeOrder = []string{
 	"dracula", "catppuccin", "nord", "gruvbox", "tokyonight",
 	"monokai", "solarized", "rosepine", "everforest", "kanagawa",
 	"synthwave", "industrial", "amber",
+	"paper", "latte", "dawn", "solarized-light", "gruvbox-light",
 }
 
 var builtinThemes = map[string]ThemePalette{
-	"modern":     {"modern", "Crisp teal, sky blue, and emerald (Default)", RGB{0, 245, 212}, RGB{0, 187, 249}, RGB{46, 213, 115}, RGB{255, 165, 2}, RGB{255, 71, 87}, RGB{56, 189, 248}, RGB{120, 132, 158}, RGB{245, 246, 250}},
-	"nes":        {"nes", "Two-tone deck grey, A/B red, charcoal, and Zapper orange", RGB{230, 0, 18}, RGB{184, 184, 184}, RGB{88, 216, 84}, RGB{255, 88, 0}, RGB{216, 40, 0}, RGB{255, 88, 0}, RGB{104, 104, 104}, RGB{236, 236, 236}},
-	"snes":       {"snes", "Deck grey, concave/convex purple & lavender, and 4-color accents", RGB{123, 104, 238}, RGB{178, 164, 255}, RGB{0, 200, 83}, RGB{255, 214, 0}, RGB{229, 57, 53}, RGB{30, 136, 229}, RGB{141, 141, 146}, RGB{244, 244, 246}},
-	"xbox":       {"xbox", "Neon jewel green, energy lime, matte charcoal, and crimson", RGB{24, 230, 24}, RGB{155, 240, 11}, RGB{24, 230, 24}, RGB{255, 185, 0}, RGB{232, 17, 35}, RGB{166, 176, 166}, RGB{92, 102, 92}, RGB{242, 247, 242}},
-	"halo":       {"halo", "Mjolnir olive drab, visor gold, shield cyan, and holo-blue", RGB{120, 158, 78}, RGB{255, 168, 0}, RGB{72, 216, 255}, RGB{255, 168, 0}, RGB{255, 56, 40}, RGB{110, 158, 255}, RGB{90, 102, 80}, RGB{232, 240, 228}},
-	"gameboy":    {"gameboy", "DMG-01 4-shade olive LCD green, grey bezel, and maroon accents", RGB{155, 188, 15}, RGB{139, 172, 15}, RGB{155, 188, 15}, RGB{139, 172, 15}, RGB{154, 32, 82}, RGB{139, 172, 15}, RGB{123, 125, 123}, RGB{202, 220, 159}},
-	"pipboy":     {"pipboy", "Phosphor green CRT, warm amber warning, and crimson alert", RGB{24, 255, 98}, RGB{16, 196, 76}, RGB{24, 255, 98}, RGB{255, 182, 66}, RGB{255, 59, 48}, RGB{20, 224, 86}, RGB{30, 107, 56}, RGB{200, 255, 216}},
-	"dracula":    {"dracula", "Dark purple, neon pink, cyan, and spring green", RGB{189, 147, 249}, RGB{255, 121, 198}, RGB{80, 250, 123}, RGB{241, 250, 140}, RGB{255, 85, 85}, RGB{139, 233, 253}, RGB{98, 114, 164}, RGB{248, 248, 242}},
-	"catppuccin": {"catppuccin", "Catppuccin Mocha pastel mauve, sapphire, peach, and green", RGB{203, 166, 247}, RGB{245, 194, 231}, RGB{166, 227, 161}, RGB{249, 226, 175}, RGB{243, 139, 168}, RGB{137, 220, 235}, RGB{108, 112, 134}, RGB{205, 214, 244}},
-	"nord":       {"nord", "Arctic frost blues and aurora borealis status colors", RGB{136, 192, 208}, RGB{129, 161, 193}, RGB{163, 190, 140}, RGB{235, 203, 139}, RGB{191, 97, 106}, RGB{94, 129, 172}, RGB{106, 118, 142}, RGB{236, 239, 244}},
-	"gruvbox":    {"gruvbox", "Warm retro earth tones, burnt orange, and olive green", RGB{254, 128, 25}, RGB{250, 189, 47}, RGB{184, 187, 38}, RGB{250, 189, 47}, RGB{251, 73, 52}, RGB{131, 165, 152}, RGB{146, 131, 116}, RGB{235, 219, 178}},
-	"tokyonight": {"tokyonight", "Tokyo Night neon indigo, violet, and dusk cyan", RGB{122, 162, 247}, RGB{187, 154, 247}, RGB{158, 206, 106}, RGB{224, 175, 104}, RGB{247, 118, 142}, RGB{125, 207, 255}, RGB{110, 120, 165}, RGB{192, 202, 245}},
-	"monokai":    {"monokai", "Warm charcoal with neon magenta, lime green, orange, and cyan", RGB{249, 38, 114}, RGB{102, 217, 239}, RGB{166, 226, 46}, RGB{253, 151, 31}, RGB{249, 38, 114}, RGB{174, 129, 255}, RGB{117, 113, 94}, RGB{248, 248, 242}},
-	"solarized":  {"solarized", "Precision cyan, cobalt blue, warm yellow, and magenta", RGB{42, 161, 152}, RGB{38, 139, 210}, RGB{133, 153, 0}, RGB{181, 137, 0}, RGB{220, 50, 47}, RGB{108, 113, 196}, RGB{101, 123, 131}, RGB{238, 232, 213}},
-	"rosepine":   {"rosepine", "Soho pine teal, muted rose, iris lavender, and warm gold", RGB{235, 188, 186}, RGB{196, 167, 231}, RGB{49, 116, 143}, RGB{246, 193, 119}, RGB{235, 111, 146}, RGB{156, 207, 216}, RGB{110, 106, 134}, RGB{224, 222, 244}},
-	"everforest": {"everforest", "Deep woodland sage green, warm aqua, and soft terracotta", RGB{167, 192, 128}, RGB{127, 187, 179}, RGB{167, 192, 128}, RGB{219, 188, 127}, RGB{230, 126, 128}, RGB{131, 192, 146}, RGB{133, 146, 137}, RGB{211, 198, 170}},
-	"kanagawa":   {"kanagawa", "Wave ink blue, samurai red, Onigiri purple, and autumn gold", RGB{126, 156, 216}, RGB{149, 127, 184}, RGB{152, 187, 108}, RGB{230, 195, 132}, RGB{228, 104, 118}, RGB{127, 180, 202}, RGB{114, 113, 105}, RGB{220, 215, 186}},
-	"synthwave":  {"synthwave", "Outrun sunset magenta, electric cyan, laser violet, and gold", RGB{255, 42, 133}, RGB{0, 240, 255}, RGB{54, 249, 246}, RGB{254, 222, 93}, RGB{254, 68, 80}, RGB{184, 147, 255}, RGB{132, 115, 156}, RGB{255, 245, 252}},
-	"industrial": {"industrial", "Safety orange, caution yellow, brushed steel grey, and oxide red", RGB{255, 103, 0}, RGB{168, 178, 188}, RGB{82, 196, 26}, RGB{250, 173, 20}, RGB{217, 48, 37}, RGB{140, 156, 172}, RGB{102, 110, 118}, RGB{236, 240, 244}},
-	"amber":      {"amber", "Vintage 1980s monochrome amber phosphor CRT terminal", RGB{255, 176, 0}, RGB{255, 204, 0}, RGB{255, 208, 64}, RGB{255, 144, 0}, RGB{255, 85, 0}, RGB{255, 176, 0}, RGB{165, 110, 0}, RGB{255, 224, 130}},
+	"modern":          {"modern", "Crisp teal, sky blue, and emerald (Default)", RGB{0, 245, 212}, RGB{0, 187, 249}, RGB{46, 213, 115}, RGB{255, 165, 2}, RGB{255, 71, 87}, RGB{56, 189, 248}, RGB{120, 132, 158}, RGB{245, 246, 250}},
+	"nes":             {"nes", "Two-tone deck grey, A/B red, charcoal, and Zapper orange", RGB{230, 0, 18}, RGB{184, 184, 184}, RGB{88, 216, 84}, RGB{255, 88, 0}, RGB{216, 40, 0}, RGB{255, 88, 0}, RGB{104, 104, 104}, RGB{236, 236, 236}},
+	"snes":            {"snes", "Deck grey, concave/convex purple & lavender, and 4-color accents", RGB{123, 104, 238}, RGB{178, 164, 255}, RGB{0, 200, 83}, RGB{255, 214, 0}, RGB{229, 57, 53}, RGB{30, 136, 229}, RGB{141, 141, 146}, RGB{244, 244, 246}},
+	"xbox":            {"xbox", "Neon jewel green, energy lime, matte charcoal, and crimson", RGB{24, 230, 24}, RGB{155, 240, 11}, RGB{24, 230, 24}, RGB{255, 185, 0}, RGB{232, 17, 35}, RGB{166, 176, 166}, RGB{92, 102, 92}, RGB{242, 247, 242}},
+	"halo":            {"halo", "Mjolnir olive drab, visor gold, shield cyan, and holo-blue", RGB{120, 158, 78}, RGB{255, 168, 0}, RGB{72, 216, 255}, RGB{255, 168, 0}, RGB{255, 56, 40}, RGB{110, 158, 255}, RGB{90, 102, 80}, RGB{232, 240, 228}},
+	"gameboy":         {"gameboy", "DMG-01 4-shade olive LCD green, grey bezel, and maroon accents", RGB{155, 188, 15}, RGB{139, 172, 15}, RGB{155, 188, 15}, RGB{139, 172, 15}, RGB{154, 32, 82}, RGB{139, 172, 15}, RGB{123, 125, 123}, RGB{202, 220, 159}},
+	"pipboy":          {"pipboy", "Phosphor green CRT, warm amber warning, and crimson alert", RGB{24, 255, 98}, RGB{16, 196, 76}, RGB{24, 255, 98}, RGB{255, 182, 66}, RGB{255, 59, 48}, RGB{20, 224, 86}, RGB{30, 107, 56}, RGB{200, 255, 216}},
+	"dracula":         {"dracula", "Dark purple, neon pink, cyan, and spring green", RGB{189, 147, 249}, RGB{255, 121, 198}, RGB{80, 250, 123}, RGB{241, 250, 140}, RGB{255, 85, 85}, RGB{139, 233, 253}, RGB{98, 114, 164}, RGB{248, 248, 242}},
+	"catppuccin":      {"catppuccin", "Catppuccin Mocha pastel mauve, sapphire, peach, and green", RGB{203, 166, 247}, RGB{245, 194, 231}, RGB{166, 227, 161}, RGB{249, 226, 175}, RGB{243, 139, 168}, RGB{137, 220, 235}, RGB{108, 112, 134}, RGB{205, 214, 244}},
+	"nord":            {"nord", "Arctic frost blues and aurora borealis status colors", RGB{136, 192, 208}, RGB{129, 161, 193}, RGB{163, 190, 140}, RGB{235, 203, 139}, RGB{191, 97, 106}, RGB{94, 129, 172}, RGB{106, 118, 142}, RGB{236, 239, 244}},
+	"gruvbox":         {"gruvbox", "Warm retro earth tones, burnt orange, and olive green", RGB{254, 128, 25}, RGB{250, 189, 47}, RGB{184, 187, 38}, RGB{250, 189, 47}, RGB{251, 73, 52}, RGB{131, 165, 152}, RGB{146, 131, 116}, RGB{235, 219, 178}},
+	"tokyonight":      {"tokyonight", "Tokyo Night neon indigo, violet, and dusk cyan", RGB{122, 162, 247}, RGB{187, 154, 247}, RGB{158, 206, 106}, RGB{224, 175, 104}, RGB{247, 118, 142}, RGB{125, 207, 255}, RGB{110, 120, 165}, RGB{192, 202, 245}},
+	"monokai":         {"monokai", "Warm charcoal with neon magenta, lime green, orange, and cyan", RGB{249, 38, 114}, RGB{102, 217, 239}, RGB{166, 226, 46}, RGB{253, 151, 31}, RGB{249, 38, 114}, RGB{174, 129, 255}, RGB{117, 113, 94}, RGB{248, 248, 242}},
+	"solarized":       {"solarized", "Precision cyan, cobalt blue, warm yellow, and magenta", RGB{42, 161, 152}, RGB{38, 139, 210}, RGB{133, 153, 0}, RGB{181, 137, 0}, RGB{220, 50, 47}, RGB{108, 113, 196}, RGB{101, 123, 131}, RGB{238, 232, 213}},
+	"rosepine":        {"rosepine", "Soho pine teal, muted rose, iris lavender, and warm gold", RGB{235, 188, 186}, RGB{196, 167, 231}, RGB{49, 116, 143}, RGB{246, 193, 119}, RGB{235, 111, 146}, RGB{156, 207, 216}, RGB{110, 106, 134}, RGB{224, 222, 244}},
+	"everforest":      {"everforest", "Deep woodland sage green, warm aqua, and soft terracotta", RGB{167, 192, 128}, RGB{127, 187, 179}, RGB{167, 192, 128}, RGB{219, 188, 127}, RGB{230, 126, 128}, RGB{131, 192, 146}, RGB{133, 146, 137}, RGB{211, 198, 170}},
+	"kanagawa":        {"kanagawa", "Wave ink blue, samurai red, Onigiri purple, and autumn gold", RGB{126, 156, 216}, RGB{149, 127, 184}, RGB{152, 187, 108}, RGB{230, 195, 132}, RGB{228, 104, 118}, RGB{127, 180, 202}, RGB{114, 113, 105}, RGB{220, 215, 186}},
+	"synthwave":       {"synthwave", "Outrun sunset magenta, electric cyan, laser violet, and gold", RGB{255, 42, 133}, RGB{0, 240, 255}, RGB{54, 249, 246}, RGB{254, 222, 93}, RGB{254, 68, 80}, RGB{184, 147, 255}, RGB{132, 115, 156}, RGB{255, 245, 252}},
+	"industrial":      {"industrial", "Safety orange, caution yellow, brushed steel grey, and oxide red", RGB{255, 103, 0}, RGB{168, 178, 188}, RGB{82, 196, 26}, RGB{250, 173, 20}, RGB{217, 48, 37}, RGB{140, 156, 172}, RGB{102, 110, 118}, RGB{236, 240, 244}},
+	"amber":           {"amber", "Vintage 1980s monochrome amber phosphor CRT terminal", RGB{255, 176, 0}, RGB{255, 204, 0}, RGB{255, 208, 64}, RGB{255, 144, 0}, RGB{255, 85, 0}, RGB{255, 176, 0}, RGB{165, 110, 0}, RGB{255, 224, 130}},
+	"paper":           {"paper", "Crisp cobalt, deep teal, forest green, and slate ink (Light)", RGB{29, 78, 216}, RGB{13, 148, 136}, RGB{21, 128, 61}, RGB{180, 83, 9}, RGB{185, 28, 28}, RGB{3, 105, 161}, RGB{100, 116, 139}, RGB{15, 23, 42}},
+	"latte":           {"latte", "Catppuccin Latte daylight mauve, cobalt, forest green, and ink (Light)", RGB{136, 57, 239}, RGB{30, 102, 245}, RGB{64, 160, 43}, RGB{204, 110, 12}, RGB{210, 15, 57}, RGB{4, 165, 229}, RGB{108, 111, 133}, RGB{76, 79, 105}},
+	"dawn":            {"dawn", "Rose Pine Dawn pine teal, iris lavender, warm gold, and ink (Light)", RGB{40, 105, 131}, RGB{144, 122, 169}, RGB{86, 148, 159}, RGB{212, 119, 18}, RGB{180, 99, 122}, RGB{49, 116, 143}, RGB{121, 117, 147}, RGB{87, 82, 121}},
+	"solarized-light": {"solarized-light", "Solarized Light deep teal, cobalt, olive, and base02 ink (Light)", RGB{38, 139, 210}, RGB{42, 161, 152}, RGB{133, 153, 0}, RGB{181, 137, 0}, RGB{220, 50, 47}, RGB{108, 113, 196}, RGB{147, 161, 161}, RGB{7, 54, 66}},
+	"gruvbox-light":   {"gruvbox-light", "Gruvbox Light burnt orange, olive green, brick red, and umber (Light)", RGB{175, 58, 3}, RGB{7, 102, 120}, RGB{121, 116, 14}, RGB{181, 118, 20}, RGB{157, 0, 6}, RGB{66, 123, 88}, RGB{146, 131, 116}, RGB{60, 56, 54}},
 }
 
 var namedColors = map[string]RGB{
@@ -701,7 +708,7 @@ func renderThemesCatalog(out io.Writer) {
 		swatches := fmt.Sprintf("%s██%s %s██%s %s██%s %s██%s %s██%s %s██%s",
 			t.Primary.fgANSI(), ansiReset(), t.Secondary.fgANSI(), ansiReset(), t.Warn.fgANSI(), ansiReset(),
 			t.Pass.fgANSI(), ansiReset(), t.Fail.fgANSI(), ansiReset(), t.Muted.fgANSI(), ansiReset())
-		fmt.Fprintf(out, "%s%s%s%s%s  %s  %s%s%s\n", marker, ansiBold(), t.Primary.fgANSI(), padRight(name, 12), ansiReset(), swatches, ansiDim(), t.Description, ansiReset())
+		fmt.Fprintf(out, "%s%s%s%s%s  %s  %s%s%s\n", marker, ansiBold(), t.Primary.fgANSI(), padRight(name, 15), ansiReset(), swatches, ansiDim(), t.Description, ansiReset())
 	}
 	fmt.Fprintln(out)
 	renderCodeBlock(out, "zsh: switch or customize theme", []string{

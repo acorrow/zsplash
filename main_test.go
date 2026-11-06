@@ -307,10 +307,28 @@ func TestSolidDefaultAndNESTheme(t *testing.T) {
 	buf.Reset()
 	run([]string{"themes"}, &buf)
 	themesOut := stripANSI(buf.String())
-	for _, th := range []string{"modern", "nes", "snes", "xbox", "halo", "gameboy", "pipboy", "dracula", "catppuccin", "nord", "gruvbox", "tokyonight", "monokai", "solarized", "rosepine", "everforest", "kanagawa", "synthwave", "industrial", "amber"} {
+	for _, th := range []string{
+		"modern", "nes", "snes", "xbox", "halo", "gameboy", "pipboy",
+		"dracula", "catppuccin", "nord", "gruvbox", "tokyonight",
+		"monokai", "solarized", "rosepine", "everforest", "kanagawa",
+		"synthwave", "industrial", "amber",
+		"paper", "latte", "dawn", "solarized-light", "gruvbox-light",
+	} {
 		if !strings.Contains(themesOut, th) {
 			t.Errorf("expected themes list to include %q, got:\n%s", th, themesOut)
 		}
+	}
+
+	// Light palette contrast adaptation
+	buf.Reset()
+	run([]string{"--theme", "paper", "prose", "Run `code`"}, &buf)
+	if !strings.Contains(buf.String(), "48;2;226;232;240m") {
+		t.Fatalf("expected light prose chip background (226;232;240) with --theme paper, got: %q", buf.String())
+	}
+	buf.Reset()
+	run([]string{"--theme", "paper", "ok", "Ready"}, &buf)
+	if !strings.Contains(buf.String(), "38;2;248;250;252m") {
+		t.Fatalf("expected light pill foreground (248;250;252) with --theme paper, got: %q", buf.String())
 	}
 }
 
@@ -375,8 +393,8 @@ func TestDocsAndSchemaAndSubcommandHelp(t *testing.T) {
 
 	buf.Reset()
 	run([]string{"help"}, &buf)
-	if !strings.Contains(stripANSI(buf.String()), "List all 20 built-in color palettes") {
-		t.Errorf("expected `zsp help` to list 20 built-in color palettes, got:\n%s", stripANSI(buf.String()))
+	if !strings.Contains(stripANSI(buf.String()), "List all 25 built-in color palettes") {
+		t.Errorf("expected `zsp help` to list 25 built-in color palettes, got:\n%s", stripANSI(buf.String()))
 	}
 
 	buf.Reset()
@@ -385,7 +403,7 @@ func TestDocsAndSchemaAndSubcommandHelp(t *testing.T) {
 	if err := json.Unmarshal(buf.Bytes(), &spec); err != nil {
 		t.Fatalf("expected valid JSON from `zsp docs --json`, got error: %v", err)
 	}
-	if spec.Name != "zsplash" || spec.Alias != "zsp" || len(spec.Commands) < 15 || len(spec.Themes) != 20 {
+	if spec.Name != "zsplash" || spec.Alias != "zsp" || len(spec.Commands) < 15 || len(spec.Themes) != 25 {
 		t.Fatalf("unexpected CLI JSON spec structure: commands=%d, themes=%d", len(spec.Commands), len(spec.Themes))
 	}
 

@@ -395,7 +395,11 @@ func styleProseText(s string) string {
 		return strings.Join(strings.Fields(s), " ")
 	}
 	pal := activePalette()
-	codeChipPrefix := "\033[48;2;30;41;59m" + ansiBold() + pal.Primary.fgANSI()
+	chipBg := "\033[48;2;30;41;59m"
+	if pal.Text.isDark() {
+		chipBg = "\033[48;2;226;232;240m"
+	}
+	codeChipPrefix := chipBg + ansiBold() + pal.Primary.fgANSI()
 
 	type spanPiece struct {
 		text   string
@@ -686,7 +690,11 @@ func renderPillBadge(out io.Writer, label string, pillColor RGB, text string, me
 	meta = sanitizeText(meta, false)
 	pill := fmt.Sprintf("[%s]", cleanLabel)
 	if !noColorEnabled() {
-		pill = fmt.Sprintf("%s%s\033[38;2;15;20;28m %s %s", ansiBold(), pillColor.bgANSI(), cleanLabel, ansiReset())
+		pillFg := "\033[38;2;15;20;28m"
+		if activePalette().Text.isDark() {
+			pillFg = "\033[38;2;248;250;252m"
+		}
+		pill = fmt.Sprintf("%s%s%s %s %s", ansiBold(), pillColor.bgANSI(), pillFg, cleanLabel, ansiReset())
 	}
 	if meta == "" {
 		fmt.Fprintf(out, "%s %s\n", pill, text)

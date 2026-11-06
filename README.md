@@ -67,7 +67,7 @@ find . -type f | zsp progress --total 100 --title "Indexing"
 | `spin` | `zsp spin [title] [flags] [-- <cmd> [args...]]` | `-t, --title <t>`<br>`-s, --style dots\|pulse\|meter\|line`<br>`-c, --color <color>`<br>`-p, --persist`<br>`--static`<br>`--stdin`<br>`-d, --duration <ms>` | Live spinner on `/dev/tty` (`stdout` stays clean for `$(...)`; propagates `<cmd>` exit code) |
 | `bar` | `zsp bar <curr> <total> [label] [flags]` | `-r, --in-place`<br>`-w, --width <cols>`<br>`-c, --color <color>`<br>`-g, --gradient <grad>` | Half-cell (`█` / `▌` / `░`) progress bar with `%` and `[curr/total]` |
 | `progress` | `<cmd> \| zsp progress [flags]` | `--total <n>`<br>`-t, --title <label>`<br>`-c, --color <color>`<br>`-g, --gradient <grad>` | Stream line counter from `stdin` that renders a live bar on `/dev/tty` |
-| `themes` | `zsp themes` | (none) | List all 20 built-in color palettes with color swatches |
+| `themes` | `zsp themes` | (none) | List all 25 built-in color palettes with color swatches |
 | `theme` | `zsp theme [<name> \| list \| preview <name>]` | (none) | Set persistent default theme or preview a theme |
 | `config` | `zsp config [list \| set <k> <v> \| reset \| path]` | (none) | Inspect, set, or reset persistent defaults in `~/.config/zsplash/config.json` |
 | `demo` | `zsp demo [--theme <name>]` | `-T, --theme <name>` | Render full visual showcase with copyable Zsh snippets |
@@ -115,7 +115,7 @@ find . -type f | zsp progress --total 100 --title "Indexing"
 
 ## Themes & Config
 
-Built-in palettes: `modern` (default), `nes`, `snes`, `xbox`, `halo`, `gameboy`, `pipboy`, `dracula`, `catppuccin`, `nord`, `gruvbox`, `tokyonight`, `monokai`, `solarized`, `rosepine`, `everforest`, `kanagawa`, `synthwave`, `industrial`, `amber`.
+Built-in palettes: `modern` (default), `nes`, `snes`, `xbox`, `halo`, `gameboy`, `pipboy`, `dracula`, `catppuccin`, `nord`, `gruvbox`, `tokyonight`, `monokai`, `solarized`, `rosepine`, `everforest`, `kanagawa`, `synthwave`, `industrial`, `amber`, `paper`, `latte`, `dawn`, `solarized-light`, `gruvbox-light`.
 
 ```zsh
 zsp themes                            # list palettes

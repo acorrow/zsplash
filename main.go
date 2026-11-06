@@ -1055,7 +1055,7 @@ func renderDemo(out io.Writer) {
 
 	renderStep(out, "5", "5", "Built-in Color Palettes & Persistent Defaults", "", "")
 	fmt.Fprintln(out)
-	for _, tName := range []string{"nes", "snes", "halo", "xbox", "dracula", "monokai", "rosepine", "everforest", "synthwave", "industrial"} {
+	for _, tName := range []string{"nes", "snes", "halo", "xbox", "dracula", "monokai", "rosepine", "everforest", "synthwave", "industrial", "paper", "latte"} {
 		t := builtinThemes[tName]
 		swatches := fmt.Sprintf("%s██%s %s██%s %s██%s %s██%s %s██%s %s██%s",
 			t.Primary.fgANSI(), ansiReset(),

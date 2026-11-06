@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- `theme`: added 5 light-terminal color palettes (`paper`, `latte`, `dawn`, `solarized-light`, `gruvbox-light`), bringing the built-in palette count from 20 to 25.
+- `prose`, `pill`: adapted contrast for light-terminal themes using a light slate background (`#E2E8F0`) for inline code chips and crisp white foreground (`#F8FAFC`) on status pill badges when a palette with dark text is active.
+
 ## v0.8.0 (2026-10-30)
 
 - `prose`, `read`: added `zsp prose` (alias `zsp read`) for high-readability terminal typography from positional paragraphs, `--file <path>` (`-f`), or piped `stdin`.

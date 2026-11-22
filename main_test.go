@@ -914,3 +914,59 @@ func TestProse(t *testing.T) {
 		t.Fatalf("expected 'zsp docs' to include '### `zsp prose`'")
 	}
 }
+
+func TestInputLimits(t *testing.T) {
+	dir := t.TempDir()
+	smallFile := filepath.Join(dir, "small.txt")
+	if err := os.WriteFile(smallFile, []byte("hello world\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	data, err := readLimitedFile(smallFile, 64)
+	if err != nil {
+		t.Fatalf("expected small regular file read to succeed, got: %v", err)
+	}
+	if string(data) != "hello world\n" {
+		t.Fatalf("unexpected file contents: %q", string(data))
+	}
+
+	if _, err := readLimitedFile(dir, 64); err == nil {
+		t.Fatalf("expected directory path to be rejected as non-regular file")
+	}
+
+	bigFile := filepath.Join(dir, "big.txt")
+	if err := os.WriteFile(bigFile, bytes.Repeat([]byte("a"), 128), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readLimitedFile(bigFile, 64); err == nil {
+		t.Fatalf("expected file exceeding byte cap to fail")
+	}
+
+	lines, err := readLimitedLines(strings.NewReader("alpha\nbeta\n"), 64)
+	if err != nil {
+		t.Fatalf("expected small stdin lines read to succeed, got: %v", err)
+	}
+	if len(lines) != 2 || lines[0] != "alpha" || lines[1] != "beta" {
+		t.Fatalf("unexpected stdin lines: %#v", lines)
+	}
+
+	if _, err := readLimitedLines(strings.NewReader(strings.Repeat("x", 80)), 64); err == nil {
+		t.Fatalf("expected stdin exceeding byte cap to fail")
+	}
+
+	var outBuf, errBuf bytes.Buffer
+	if code := runWithExit([]string{"prose", "--file", dir}, &outBuf, &errBuf); code != 1 {
+		t.Fatalf("expected prose --file <dir> to exit 1, got %d", code)
+	}
+	if !strings.Contains(stripANSI(errBuf.String()), "FAIL") {
+		t.Fatalf("expected FAIL badge on errOut for prose --file <dir>, got: %q", stripANSI(errBuf.String()))
+	}
+
+	outBuf.Reset()
+	errBuf.Reset()
+	if code := runWithExit([]string{"tsv", "--file", dir}, &outBuf, &errBuf); code != 1 {
+		t.Fatalf("expected tsv --file <dir> to exit 1, got %d", code)
+	}
+	if !strings.Contains(stripANSI(errBuf.String()), "FAIL") {
+		t.Fatalf("expected FAIL badge on errOut for tsv --file <dir>, got: %q", stripANSI(errBuf.String()))
+	}
+}

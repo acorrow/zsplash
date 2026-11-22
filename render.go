@@ -520,12 +520,60 @@ func parseProseBlocks(rawText string) []proseBlock {
 	return blocks
 }
 
+const maxInputBytes int64 = 10 * 1024 * 1024
+
+func readLimitedFile(path string, maxBytes int64) ([]byte, error) {
+	clean := filepath.Clean(path)
+	f, err := os.Open(clean) // #nosec G304
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = f.Close() }()
+	info, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("refusing to read non-regular file %q", clean)
+	}
+	if info.Size() > maxBytes {
+		return nil, fmt.Errorf("file %q exceeds %d byte limit", clean, maxBytes)
+	}
+	data, err := io.ReadAll(io.LimitReader(f, maxBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > maxBytes {
+		return nil, fmt.Errorf("file %q exceeds %d byte limit", clean, maxBytes)
+	}
+	return data, nil
+}
+
+func readLimitedLines(in io.Reader, maxBytes int64) ([]string, error) {
+	var lines []string
+	var total int64
+	scanner := bufio.NewScanner(io.LimitReader(in, maxBytes+1))
+	scanner.Buffer(make([]byte, 64*1024), 10*1024*1024)
+	for scanner.Scan() {
+		line := scanner.Text()
+		total += int64(len(line)) + 1
+		if total > maxBytes {
+			return nil, fmt.Errorf("stdin input exceeds %d byte limit", maxBytes)
+		}
+		lines = append(lines, line)
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	return lines, nil
+}
+
 func runProse(in io.Reader, out io.Writer, errOut io.Writer, opts ProseOptions) int {
 	pal := activePalette()
 	var rawText string
 
 	if opts.File != "" {
-		data, err := os.ReadFile(filepath.Clean(opts.File)) // #nosec G304
+		data, err := readLimitedFile(opts.File, maxInputBytes)
 		if err != nil {
 			renderPillBadge(errOut, "FAIL", pal.Fail, err.Error(), "")
 			return 1
@@ -539,13 +587,8 @@ func runProse(in io.Reader, out io.Writer, errOut io.Writer, opts ProseOptions) 
 		rawText = strings.Join(expanded, "\n\n")
 	} else if in != nil {
 		if f, ok := in.(*os.File); !ok || !isTerminal(f) {
-			var lines []string
-			scanner := bufio.NewScanner(in)
-			scanner.Buffer(make([]byte, 64*1024), 10*1024*1024)
-			for scanner.Scan() {
-				lines = append(lines, scanner.Text())
-			}
-			if err := scanner.Err(); err != nil {
+			lines, err := readLimitedLines(in, maxInputBytes)
+			if err != nil {
 				renderPillBadge(errOut, "FAIL", pal.Fail, err.Error(), "")
 				return 1
 			}
@@ -1015,7 +1058,7 @@ func runTable(in io.Reader, out io.Writer, errOut io.Writer, opts TableOptions) 
 	var rawLines []string
 
 	if opts.File != "" {
-		data, err := os.ReadFile(filepath.Clean(opts.File)) // #nosec G304
+		data, err := readLimitedFile(opts.File, maxInputBytes)
 		if err != nil {
 			renderPillBadge(errOut, "FAIL", pal.Fail, err.Error(), "")
 			return 1
@@ -1033,12 +1076,9 @@ func runTable(in io.Reader, out io.Writer, errOut io.Writer, opts TableOptions) 
 		if f, ok := in.(*os.File); ok && isTerminal(f) {
 			return 0
 		}
-		scanner := bufio.NewScanner(in)
-		scanner.Buffer(make([]byte, 64*1024), 10*1024*1024)
-		for scanner.Scan() {
-			rawLines = append(rawLines, scanner.Text())
-		}
-		if err := scanner.Err(); err != nil {
+		var err error
+		rawLines, err = readLimitedLines(in, maxInputBytes)
+		if err != nil {
 			renderPillBadge(errOut, "FAIL", pal.Fail, err.Error(), "")
 			return 1
 		}

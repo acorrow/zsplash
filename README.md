@@ -8,7 +8,9 @@ Terminal text formatting, banners, boxes, status badges, spinners, and progress 
 brew install acorrow/tap/zsplash
 ```
 
-Both `zsplash` and the `zsp` shorthand are installed.
+Installs prebuilt static binaries (`zsplash` and the `zsp` shorthand) with zero dependencies (no Go or Xcode required).
+
+Prebuilt archives for macOS (`arm64`, `amd64`), Linux (`amd64`, `arm64`), and Windows (`amd64`) with `checksums.txt` and build provenance attestations are also available on [GitHub Releases](https://github.com/acorrow/zsplash/releases).
 
 ## Usage
 

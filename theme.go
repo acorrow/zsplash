@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -132,7 +133,9 @@ func detectTermWidth() int {
 		if sttyPath != "" {
 			if tty, err := os.Open("/dev/tty"); err == nil {
 				defer func() { _ = tty.Close() }()
-				cmd := exec.Command(sttyPath, "size") // #nosec G204
+				ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+				defer cancel()
+				cmd := exec.CommandContext(ctx, sttyPath, "size") // #nosec G204
 				cmd.Stdin = tty
 				if out, err := cmd.Output(); err == nil {
 					if parts := strings.Fields(strings.TrimSpace(string(out))); len(parts) == 2 {

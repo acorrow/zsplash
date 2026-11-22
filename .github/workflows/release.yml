@@ -1,0 +1,85 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+
+      - name: Verify stdlib-only and run tests
+        env:
+          CI: "true"
+        run: |
+          test ! -f go.sum
+          ! grep -Eq '^\s*(require|replace)\b' go.mod
+          go vet ./...
+          go test ./...
+
+      - name: Build static release archives
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          mkdir -p dist
+
+          build_target() {
+            local goos="$1"
+            local goarch="$2"
+            local bin="zsplash"
+            if [ "$goos" = "windows" ]; then
+              bin="zsplash.exe"
+            fi
+
+            local stage
+            stage="$(mktemp -d)"
+            CGO_ENABLED=0 GOPROXY=off GOSUMDB=off GOTOOLCHAIN=local GOOS="$goos" GOARCH="$goarch" \
+              go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o "${stage}/${bin}" .
+            cp README.md LICENSE "$stage/"
+
+            if [ "$goos" = "windows" ]; then
+              (cd "$stage" && zip -q "${GITHUB_WORKSPACE}/dist/zsplash_${VERSION}_${goos}_${goarch}.zip" "$bin" README.md LICENSE)
+            else
+              tar -C "$stage" -czf "dist/zsplash_${VERSION}_${goos}_${goarch}.tar.gz" "$bin" README.md LICENSE
+            fi
+            rm -rf "$stage"
+          }
+
+          build_target darwin arm64
+          build_target darwin amd64
+          build_target linux amd64
+          build_target linux arm64
+          build_target windows amd64
+
+          (cd dist && LC_ALL=C sha256sum zsplash_* > checksums.txt)
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/zsplash_*
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" dist/* --title "zsplash $GITHUB_REF_NAME" --generate-notes
+          fi

@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.8.2 (2026-11-22)
+
+- `release`: added a tag-triggered GitHub Actions workflow (`release.yml`) that builds static `CGO_ENABLED=0` archives (`darwin/arm64`, `darwin/amd64`, `linux/amd64`, `linux/arm64`, `windows/amd64`), publishes `checksums.txt`, and attaches build provenance attestations so Homebrew and direct users install prebuilt binaries with zero dependencies (no Go or Xcode required).
+- `security`: bumped minimum Go version in `go.mod` to `1.26`, enforced regular-file validation and 10 MiB read caps on `prose --file`, `tsv --file`, and `stdin`, and added a 500ms timeout around `stty size` terminal width queries.
+
 ## v0.8.1 (2026-11-06)
 
 - `theme`: added 5 light-terminal color palettes (`paper`, `latte`, `dawn`, `solarized-light`, `gruvbox-light`), bringing the built-in palette count from 20 to 25.
